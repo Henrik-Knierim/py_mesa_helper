@@ -2,6 +2,9 @@ class inlist:
     def __init__(self, name):
         self.name = name
 
+        with open(self.name, 'r') as file:
+            self.original_inlist = file.read()
+
     
     def __str__(self):
         return self.name
@@ -68,32 +71,9 @@ class inlist:
         with open(self.name, 'w') as file:
             file.writelines(lines)
         
-        print(f"Changed {option} to {value}")
-
-        def change_lines(self, option : str, value):
-        
-            delimiter = "="
-
-            with open(self.name, 'r') as file:
-
-                lines = file.readlines()
-
-                for i,l in enumerate(lines):
-                    if option in l:
-
-                        # test if this is in fact the right option
-
-                        line_splitted = l.split(delimiter)
-                        # true if the occurence exactly matches with option
-                        is_option = line_splitted[0].strip() == option                    
-                        if is_option:
-                            index_option = i
-                            new_line = l.replace(line_splitted[1].strip(), str(value))
-                            break
-        
-            lines[index_option] = new_line
-
-        return lines
-
-    # I could have some kind of clean function such that the inlist doesn't contain too many options.
-    # idea: one attribute saves the initial inlist and another function restores the initial inlist after the code ran
+        print(f"Set {option} to {value}")
+    
+    def clean_inlist(self):
+        with open(self.name, 'w') as file:
+            file.write(self.original_inlist)
+        print("restored inlist to original version")

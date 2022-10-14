@@ -73,7 +73,7 @@ class inlist:
         
         print(f"Set {option} to {value}")
     
-    def clean_inlist(self):
+    def restore_inlist(self):
         with open(self.name, 'w') as file:
             file.write(self.original_inlist)
         print("restored inlist to original version")

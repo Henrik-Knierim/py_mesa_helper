@@ -1,3 +1,4 @@
+import os
 class inlist:
     def __init__(self, name):
         self.name = name
@@ -77,3 +78,25 @@ class inlist:
         with open(self.name, 'w') as file:
             file.write(self.original_inlist)
         print("restored inlist to original version")
+
+    # sets the option and runs the inlist
+    def run_inlist_single_value(self, section : str, option : str, value, run_command = './rn'):
+        
+        # set the option
+        self.set_option(section, option, value)
+
+        # run the inlist
+        os.system(run_command)
+
+        print(f"Ran {self.name} with {option} set to {value}.")
+
+        # restore the inlist to its original state
+        self.restore_inlist()
+
+    # same as run_inlist_single_paramter but for a list of values
+    def run_inlist_multiple_value(self, section : str, option : str, values : list, run_command = './rn', logs_parent_directory = "../LOGS"):
+
+        for v in values:
+            log_value = f"'{logs_parent_directory}/{option}/{v}'"
+            self.set_option('&controls', 'log_directory', log_value)
+            self.run_inlist_single_value(section, option, v, run_command)

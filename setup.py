@@ -15,5 +15,5 @@ setuptools.setup(
 	url="https://github.com/Henrik-Knierim/mesa_inlist_manager",
 	license='MIT',
 	python_requires='>=3.9',
-	install_requires=["os"]
+	install_requires=["os", "mesa_reader"]
 )

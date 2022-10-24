@@ -1,6 +1,9 @@
 import os
-import matplotlib.pyplot as plt
 
+#from mesaplot import mesaplot
+#from mesaplot import ptest
+from mesaplot import *
+from astro_constants import R_Jup
 
 class inlist:
     def __init__(self, name):

@@ -2,6 +2,7 @@
 import numpy as np
 
 from os import path
+from astrophys import M_Jup_in_gm, Z_Sol, M_Jup_in_Sol
 resources_dir = path.join(path.dirname(__file__), 'resources')
 
 
@@ -15,6 +16,7 @@ class HotJupiterData:
             self.Teq, self.stellar_FeH, self.stellar_age = np.loadtxt(
                 self.data_path,
                 dtype={
+
                     'names': (
                         'Planet_Name',
                         'Rp',
@@ -47,18 +49,42 @@ class HotJupiterData:
                 }
             )
 
-        # pop missing values from data
-     
-        ## find the missing indices
-        missing_value_indices = np.array([],dtype=int)
+        # pop missing and out-of-range values from data
+        # select Mp > 0.3 M_Jup
+        self.mass = np.where(self.mass < 0.3, -1, self.mass)
+
+        # find the missing indices
+        missing_value_indices = np.array([], dtype=int)
         for key in self.__dict__.keys():
             if key != 'name':
                 missing_value_indices = np.append(
                     missing_value_indices,
                     np.where(self.__dict__[key] == -1)[0]
-                    )
+                )
 
-        ## deleting the respective elements
+        # deleting the respective elements
         for key, value in self.__dict__.items():
             self.__dict__[key] = np.delete(value, missing_value_indices)
 
+        self.dict = {}
+        for i, key in enumerate(self.name):
+            self.dict.update(
+                {
+                    key: {
+                        'Rp': self.radius[i],
+                        'Mp': self.mass[i],
+                        'Teq': self.Teq[i],
+                        '[Fe/H]_star': self.stellar_FeH[i],
+                        'Age': self.stellar_age[i]
+                    }
+                }
+            )
+
+    def mass_in_gm(self):
+        return self.mass*M_Jup_in_gm
+
+    def mass_in_M_Sol(self):
+        return self.mass*M_Jup_in_Sol
+
+    def stellar_metallicity(self):
+        return Z_Sol * 10**self.stellar_FeH

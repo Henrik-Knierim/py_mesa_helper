@@ -7,6 +7,59 @@ import numpy as np
 
 class MesaPlot:
 
+    def __init__(
+        self,
+        logs_list,
+        logs_origin = '../LOGS'
+        ):
+
+        # list of paths to the individual LOGS directories
+        self.logs_list = logs_list
+
+        # path to the LOGS parent directory
+        self.logs_origin = logs_origin
+
+    def final_quantities(self, quantity):
+        
+        quantity_list = []
+
+        for l in self.logs_list:
+            history = mr.MesaData(self.logs_origin + l + '/history.data')
+            final_quantity = history.data(quantity)[-1]
+            quantity_list.append(final_quantity)
+            
+        return np.array(quantity_list)
+    
+    def convert_list(self, attribute, conversion):
+        
+        old_values = getattr(self, attribute)
+
+        if type(conversion) == float or type(conversion) == int:
+            values = conversion * old_values
+        
+        elif callable(conversion):
+            values = conversion(old_values)
+
+        setattr(self, attribute, values)
+
+    def final_quantity_plot(
+        self,
+        x,
+        y,
+        *args,
+        **kwargs
+        ):
+
+        xData = self.final_quantities(x)
+        yData = self.final_quantities(y)
+
+        plt.xlabel(x)
+        plt.ylabel(y)
+        
+        plt.plot(xData, yData, *args, **kwargs)
+
+class MesaPlotOption():
+
     def create_LOGS_list(self):
         logs_list = [f'{self.logs_origin}/{self.option}/{v}' for v in self.values]
         return logs_list
@@ -29,6 +82,8 @@ class MesaPlot:
         option,
         logs_origin = '../LOGS'
         ):
+        
+        super().__init__()
         
         # quantity we want to plot
         self.quantity = quantity
@@ -82,7 +137,9 @@ class MesaPlot:
         plt.ylabel(self.quantity)
 
         xData = self.values
-
-        yData = self.final_quantities
         
+        print(xData)
+        yData = self.final_quantities
+        print(yData)
+
         plt.plot(xData, yData, *args, **kwargs)

@@ -1,4 +1,6 @@
 import os
+import numpy as np
+
 class Inlist:
     def __init__(self, name):
         self.name = name
@@ -35,9 +37,13 @@ class Inlist:
                     is_option = line_splitted[0].strip() == option
                     if is_option:
                         index_option = i
+                        
+                        # fortran formatting
+                        out = fortran_format(value)
+
                         new_line = l.replace(
                             line_splitted[1].strip(), 
-                            str(value),
+                            out,
                             1 # to change the value only
                             )
                         break
@@ -54,6 +60,9 @@ class Inlist:
 
             lines = file.readlines()
 
+            # fortran formatting
+            out = fortran_format(value)
+
             for i, l in enumerate(lines):
                 if section in l:
 
@@ -61,7 +70,7 @@ class Inlist:
 
                     break
 
-            lines.insert(index_section + 2, f"\t{option} = {value}\n")
+            lines.insert(index_section + 2, f"\t{option} = {out}\n")
 
         return lines
 
@@ -79,7 +88,7 @@ class Inlist:
         with open(self.name, 'w') as file:
             file.writelines(lines)
 
-        print(f"Set {option} to {value}")
+        print(f"Set {option} to {fortran_format(value)}")
 
     def restore_inlist(self):
         with open(self.name, 'w') as file:
@@ -101,9 +110,29 @@ class Inlist:
         self.restore_inlist()
 
     # same as run_inlist_single_paramter but for a list of values
-    def run_inlist_multiple_value(self, section: str, option: str, values: list, run_command='./rn', logs_parent_directory="../LOGS"):
+    def run_inlist_multiple_value(self, section: str, option: str, values: list, run_command='./rn', logs_parent_directory="../LOGS", inlist_logs = None):
 
         for v in values:
             log_value = f"'{logs_parent_directory}/{option}/{v}'"
-            self.set_option('&controls', 'log_directory', log_value)
+
+            # check where to save the file
+            # e.g., you change inlist_core but the LOGS are saved in inlist_evolve
+
+            if inlist_logs != None:
+                inlist_logs.set_option('&controls', 'log_directory', log_value)
+            else:
+                self.set_option('&controls', 'log_directory', log_value)
+
             self.run_inlist_single_value(section, option, v, run_command)
+
+
+def fortran_format(x):
+    if (type(x) == float) or (type(x) == np.float32) or (type(x) == np.float64):
+        log = np.log10(x)
+        exponent = int(np.floor(log))
+        prefactor = 10**(log-exponent)
+        out = f'{prefactor:.6f}d{exponent}'
+    
+    else:
+        out = str(x)
+    return out

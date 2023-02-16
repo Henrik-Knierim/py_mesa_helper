@@ -5,7 +5,6 @@ from os import path
 from astrophys import M_Jup_in_gm, Z_Sol, M_Jup_in_Sol
 resources_dir = path.join(path.dirname(__file__), 'resources')
 
-
 class HotJupiterData:
 
     data_path = path.join(resources_dir, 'HJ_data.csv')

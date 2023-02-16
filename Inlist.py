@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from astrophys import grad_Z_lin, scaled_heavy_mass_abundaces
 
 class Inlist:
     def __init__(self, name):
@@ -125,6 +126,44 @@ class Inlist:
 
             self.run_inlist_single_value(section, option, v, run_command)
 
+    # create file for relax_initial_composition
+
+    def _create_composition_list(self, m, m_1, m_2, M_z, Z_atm, M_p):
+        
+        # get Z values for mass bins in m
+        Z_list = grad_Z_lin(m, m_1, m_2, M_z, Z_atm)
+        
+        l = []
+        for i, mass_bin in enumerate(m):
+            # creates list [mass_bin, X_H(mass_bin), ..., X_Mg24(mass_bin)]
+            l.append([(M_p-mass_bin)/M_p, *scaled_heavy_mass_abundaces(Z_list[i]).values()])
+
+        # reverse order for MESA's relax_inital_composition format
+        return np.flip(l,0)
+
+    def create_relax_inital_composition_file(self, m, m_1, m_2, M_z, Z_atm, M_p, relax_composition_filename='relax_composition_file'):
+
+        # for basic network
+        network = 'basic'
+        num_points = 2
+        num_species = 8
+
+        comp_list = self._create_composition_list(m, m_1, m_2, M_z, Z_atm, M_p)
+
+        with open(relax_composition_filename, 'w') as file:
+            file.write(f"{num_points}\t{num_species}\n")
+            for l in comp_list:
+                str_version = [str(el) for el in l]
+                file.write('\t'.join(str_version)+'\n')
+
+class MultipleInlists:
+
+    def __init__(self, inlist_dict):
+
+        self.inlist_dict = inlist_dict
+        # create a dictionary using the Inlist class
+        for key, value in self.inlist_dict.items():
+            inlist_dict[key] = Inlist(value)
 
 def fortran_format(x):
     if (type(x) == float) or (type(x) == np.float32) or (type(x) == np.float64):

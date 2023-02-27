@@ -2,7 +2,7 @@
 import numpy as np
 
 from os import path
-from astrophys import M_Jup_in_g, Z_Sol, M_Jup_in_Sol
+from mesa_inlist_manager.astrophys import M_Jup_in_g, Z_Sol, M_Jup_in_Sol
 resources_dir = path.join(path.dirname(__file__), 'resources')
 
 class HotJupiterData:

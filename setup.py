@@ -16,6 +16,7 @@ setuptools.setup(
 	license='MIT',
 	python_requires='>=3.9',
 	install_requires=[
-		"mesa_reader>=0.3.0"
+		"mesa_reader>=0.3.0",
+		'numpy'
 		]
 )

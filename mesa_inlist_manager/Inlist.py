@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from astrophys import *
+from mesa_inlist_manager.astrophys import *
 
 
 class Inlist:

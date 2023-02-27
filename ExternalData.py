@@ -2,7 +2,7 @@
 import numpy as np
 
 from os import path
-from astrophys import M_Jup_in_gm, Z_Sol, M_Jup_in_Sol
+from astrophys import M_Jup_in_g, Z_Sol, M_Jup_in_Sol
 resources_dir = path.join(path.dirname(__file__), 'resources')
 
 class HotJupiterData:
@@ -79,8 +79,8 @@ class HotJupiterData:
                 }
             )
 
-    def mass_in_gm(self):
-        return self.mass*M_Jup_in_gm
+    def mass_in_g(self):
+        return self.mass*M_Jup_in_g
 
     def mass_in_M_Sol(self):
         return self.mass*M_Jup_in_Sol

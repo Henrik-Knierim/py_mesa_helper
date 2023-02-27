@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from astrophys import grad_Z_lin_Z_1_Z_2, grad_Z_lin_M_z, scaled_heavy_mass_abundaces, grad_Y_stepwise, scaled_H_He_mass_abundances, grad_Z_stepwise, grad_Y_lin, grad_Z_log, M_Jup_in_Sol, M_Jup_in_g, M_Sol_in_g
+from astrophys import *
 
 
 class Inlist:
@@ -126,72 +126,6 @@ class Inlist:
 
             self.run_inlist_single_value(section, option, v, run_command)
 
-    # create file for relax_initial_composition
-
-    def _create_composition_list(self, m, M_p, method_input, method, iso_net):
-
-        # get Z or Y values for mass bins in m
-        if method == 'grad_Z_lin_M_z':
-            [m_1, m_2, M_z, Z_atm] = method_input
-            # Z values:
-            abu_list = grad_Z_lin_M_z(m, m_1, m_2, M_z, Z_atm)
-            def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
-
-        elif method == 'grad_Z_lin_Z_1_Z_2':
-            [m_1, m_2, Z_1, Z_2] = method_input
-            # Z values
-            abu_list = grad_Z_lin_Z_1_Z_2(m, m_1, m_2, Z_1, Z_2)
-            def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
-
-        elif method == 'grad_Z_stepwise':
-            [m_transition, Z_inner, Z_outer] = method_input
-            # Z values:
-            abu_list = grad_Z_stepwise(m, m_transition, Z_inner, Z_outer)
-            def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
-
-        elif method == 'grad_Z_log':
-            [m_1, m_2, log_Z_1, log_Z_2] = method_input
-            # Z values
-            abu_list = grad_Z_log(m, m_1, m_2, log_Z_1, log_Z_2)
-            def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
-
-        elif method == 'grad_Y_lin':
-            [m_1, m_2, Y_1, Y_2] = method_input
-            # Y values:
-            abu_list = grad_Y_lin(m, m_1, m_2, Y_1, Y_2)
-            def abu_func(Y): return scaled_H_He_mass_abundances(Y, iso_net)
-
-        elif method == 'grad_Y_stepwise':
-            [m_transition, Y_inner, Y_outer] = method_input
-
-            # Y values:
-            abu_list = grad_Y_stepwise(m, m_transition, Y_inner, Y_outer)
-            def abu_func(Y): return scaled_H_He_mass_abundances(Y, iso_net)
-
-        l = []
-        for i, mass_bin in enumerate(m):
-            # creates list [mass_bin, X_H(mass_bin), ..., X_Mg24(mass_bin)]
-            l.append([(M_p-mass_bin)/M_p, *abu_func(abu_list[i]).values()])
-
-        # reverse order for MESA's relax_inital_composition format
-        return np.flip(l, 0)
-
-    def create_relax_inital_composition_file(self, m, M_p, method_input, method, iso_net, relax_composition_filename='relax_composition_file.dat'):
-
-        comp_list = self._create_composition_list(
-            m, M_p, method_input, method, iso_net)
-
-        num_points = len(m)
-        # comp_list = [[mass_bin, spec_1, spec_2, ..., spec_N], ...]
-        num_species = len(comp_list[1])-1
-
-        with open(relax_composition_filename, 'w') as file:
-            file.write(f"{num_points}  {num_species}\n")
-            for l in comp_list:
-                #str_version = [str(el) for el in l]
-                str_version = [f'{el:.16e}' for el in l]
-                file.write('  '.join(str_version)+'\n')
-
     def set_logs_path(self, logs_name, logs_parent_directory="LOGS", inlist_logs=None):
         
         logs_name = f'{logs_parent_directory}/{logs_name}'
@@ -216,6 +150,16 @@ class Inlist:
                 lengt_of_file = 1
 
             file.write(f"{lengt_of_file}\t{value}\n")
+
+    # common inlist tasks
+
+    def set_initial_mass_in_M_Jup(self, M_p_in_M_J:float):
+        M_p_in_g = M_Jup_in_g*M_p_in_M_J
+        self.set_option('&star_job', 'mass_in_gm_for_create_initial_model', M_p_in_g)
+
+    def set_initial_radius_in_R_Jup(self, R_p_in_R_J:float):
+        R_p_in_cm = R_Jup_in_cm*R_p_in_R_J
+        self.set_option('&star_job', 'radius_in_cm_for_create_initial_model', R_p_in_cm)
 
 class MultipleInlists:
 
@@ -294,3 +238,56 @@ def fortran_format(x):
     else:
         out = str(x)
     return out
+
+# create file for relax_initial_composition
+def _create_composition_list(m, M_p, method_input, method, iso_net):
+    # get Z or Y values for mass bins in m
+    if method == 'grad_Z_lin_M_z':
+        [m_1, m_2, M_z, Z_atm] = method_input
+        # Z values:
+        abu_list = grad_Z_lin_M_z(m, m_1, m_2, M_z, Z_atm)
+        def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
+    elif method == 'grad_Z_lin_Z_1_Z_2':
+        [m_1, m_2, Z_1, Z_2] = method_input
+        # Z values
+        abu_list = grad_Z_lin_Z_1_Z_2(m, m_1, m_2, Z_1, Z_2)
+        def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
+    elif method == 'grad_Z_stepwise':
+        [m_transition, Z_inner, Z_outer] = method_input
+        # Z values:
+        abu_list = grad_Z_stepwise(m, m_transition, Z_inner, Z_outer)
+        def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
+    elif method == 'grad_Z_log':
+        [m_1, m_2, log_Z_1, log_Z_2] = method_input
+        # Z values
+        abu_list = grad_Z_log(m, m_1, m_2, log_Z_1, log_Z_2)
+        def abu_func(Z): return scaled_heavy_mass_abundaces(Z, iso_net)
+    elif method == 'grad_Y_lin':
+        [m_1, m_2, Y_1, Y_2] = method_input
+        # Y values:
+        abu_list = grad_Y_lin(m, m_1, m_2, Y_1, Y_2)
+        def abu_func(Y): return scaled_H_He_mass_abundances(Y, iso_net)
+    elif method == 'grad_Y_stepwise':
+        [m_transition, Y_inner, Y_outer] = method_input
+        # Y values:
+        abu_list = grad_Y_stepwise(m, m_transition, Y_inner, Y_outer)
+        def abu_func(Y): return scaled_H_He_mass_abundances(Y, iso_net)
+    l = []
+    for i, mass_bin in enumerate(m):
+        # creates list [mass_bin, X_H(mass_bin), ..., X_Mg24(mass_bin)]
+        l.append([(M_p-mass_bin)/M_p, *abu_func(abu_list[i]).values()])
+    # reverse order for MESA's relax_inital_composition format
+    return np.flip(l, 0)
+
+def create_relax_inital_composition_file(m, M_p, method_input, method, iso_net, relax_composition_filename='relax_composition_file.dat'):
+    comp_list = _create_composition_list(
+        m, M_p, method_input, method, iso_net)
+    num_points = len(m)
+    # comp_list = [[mass_bin, spec_1, spec_2, ..., spec_N], ...]
+    num_species = len(comp_list[1])-1
+    with open(relax_composition_filename, 'w') as file:
+        file.write(f"{num_points}  {num_species}\n")
+        for l in comp_list:
+            #str_version = [str(el) for el in l]
+            str_version = [f'{el:.16e}' for el in l]
+            file.write('  '.join(str_version)+'\n')

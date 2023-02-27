@@ -8,7 +8,7 @@ setuptools.setup(
 	version="0.0.1",
 	author="Henrik Knierim",
 	author_email="henrik.knierim@uzh.ch",
-	packages=[],
+	packages=['mesa_inlist_manager'],
 	description="A simple package for changing MESA inlists.",
 	long_description=description,
 	long_description_content_type="text/markdown",

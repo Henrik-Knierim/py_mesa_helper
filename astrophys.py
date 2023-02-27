@@ -12,11 +12,13 @@ X_Sol = 1 - Y_Sol - Z_Sol
 
 # Jupiter
 R_Jup_in_Sol = 0.10054
+R_Jup_in_cm = 6.995e9
 M_Jup_in_g = 1.89813e30
 M_Jup_in_Sol = 0.000955
 
 # Earth
-M_Earth_in_Sol = 3.e-6  # M_Sol
+M_Earth_in_Sol = 3.e-6
+M_Earth_in_Jup = 0.00314636
 
 Teff_Jup = 124  # K
 

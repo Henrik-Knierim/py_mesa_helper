@@ -10,7 +10,7 @@ class MesaPlot:
     def __init__(
         self,
         logs_list,
-        logs_origin = '../LOGS'
+        logs_origin = 'LOGS/'
         ):
 
         # list of paths to the individual LOGS directories
@@ -80,7 +80,7 @@ class MesaPlotOption():
         quantity,
         values,
         option,
-        logs_origin = '../LOGS'
+        logs_origin = 'LOGS'
         ):
         
         super().__init__()

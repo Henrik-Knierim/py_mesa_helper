@@ -1,7 +1,8 @@
 # class for creating compositional gradients
 # packages
 import numpy as np
-from mesa_inlist_manager.astrophys import scaled_solar_ratio_mass_fractions, X_Sol, Y_Sol, Z_Sol, M_Earth_in_Jup
+import scipy.integrate as integrate
+from mesa_inlist_manager.astrophys import scaled_solar_ratio_mass_fractions, X_Sol, Y_Sol, Z_Sol, M_Earth_in_Jup, M_Jup_in_Earth
 
 # abundace data for basic.net
 # src: Lodders+2020
@@ -33,6 +34,22 @@ def lin(m:np.ndarray, m_1:float, m_2:float, f_1:float, f_2:float, **kwargs):
 
     return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [lambda m: f_1, lambda m: a*m+b, f_2])
 
+def Z_lin_slope_fixed(m : np.array, m_core : float, Z_0 : float, Z_atm : float, **kwargs):
+
+    # tests
+ 
+    if any(n < 0 for n in m):
+        raise Exception("m should contain positive numbers only")
+    elif m_core < 0:
+        raise Exception("m_core needs to be >= 0")
+    elif not 0<=Z_atm<= 1:
+        raise Exception("Z_atm needs to be between 0 and 1")
+    elif not 0<=Z_0<= 1:
+        raise Exception("Z_atm needs to be between 0 and 1")
+
+    return np.piecewise(m, [m <= m_core, m > m_core], [lambda m: Z_0 + m*(-Z_0 + Z_atm)/m_core, Z_atm])
+
+
 def Z_lin_M_z(m:np.ndarray, m_1:float, m_2:float, M_z:float, Z_atm:float, **kwargs):
 
     M_z = M_z*M_Earth_in_Jup
@@ -46,7 +63,7 @@ def Z_lin_M_z(m:np.ndarray, m_1:float, m_2:float, M_z:float, Z_atm:float, **kwar
     elif M_z < 0:
         raise Exception("M_z needs to be >= 0")
     elif not 0<=Z_atm<= 1:
-        raise Exception("Z_at needs to be between 0 and 1")
+        raise Exception("Z_atm needs to be between 0 and 1")
 
     # for some reason, I need to pass the lambda functions directly without predefining them ...
     return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [lambda m:(-2*M_z+(-m_1+m_2)*Z_atm)/(m_1 - m_2), lambda m: (2*(-m+m_2)*M_z + (m_1-m_2)*(-2*m+m_1+m_2)*Z_atm)/(m_1-m_2)**2, Z_atm])
@@ -58,6 +75,23 @@ def stepwise(m, m_transition, f_1, f_2, **kwargs):
         raise Exception("m should contain positive numbers only")
     
     return np.piecewise(m, [m <= m_transition, m > m_transition], [f_1, f_2])
+
+def exponential(m:np.ndarray, m_core:float, m_dilute:float, alpha:float, Z_core:float, Z_atm, **kwargs):
+    """Returns an array of mass fractions for a stepwise compositional gradient with an exponential transition."""
+
+    # tests
+    if m_dilute < m_core:
+        raise Exception("m_dilute must be larger than m_core")
+    elif m_core < 0:
+        raise Exception("m_core needs to be >= 0")
+    elif any(n < 0 for n in m):
+        raise Exception("m should contain positive numbers only")
+    elif not 0<=Z_core<= 1:
+        raise Exception("Z_core needs to be between 0 and 1")
+    elif not 0<=Z_atm<= 1:
+        raise Exception("Z_atm needs to be between 0 and 1")
+    
+    return np.piecewise(m, [m <= m_core, ((m_core <= m) & (m <= m_dilute)), m > m_dilute], [lambda m: Z_core, lambda m: (Z_core-Z_atm)*np.exp(alpha*m)/(np.exp(alpha*m_core)-np.exp(alpha*m_dilute)) + np.exp(m_core*alpha)*(Z_core-Z_atm)/(np.exp(alpha*m_dilute)-np.exp(alpha*m_core)) + Z_core, Z_atm])
 
 class CompositionalGradient:
     def __init__(self, method : str, M_p : float, iso_net = 'planets') -> None:
@@ -72,27 +106,35 @@ class CompositionalGradient:
         
         self.iso_net = iso_net
 
-        # set gradient method
-        if (method == 'Y_lin') or (method == 'Z_lin'):
+        self.method = method
+
+        # set gradient self.method
+        if (self.method == 'Y_lin') or (self.method == 'Z_lin'):
             self.abu_profile = lin
 
-        elif (method == 'Y_log') or (method == 'Z_log'):
+        elif (self.method == 'Y_log') or (self.method == 'Z_log'):
             self.abu_profile = lambda m, m_1, m_2, log_f_1, log_f_2: 10**lin(m, m_1, m_2, log_f_1, log_f_2)
 
-        elif method == 'Z_lin_M_z':
+        elif self.method == 'Z_lin_M_z':
             self.abu_profile = Z_lin_M_z
 
-        elif (method == 'Y_stepwise') or (method == 'Z_Stepwise'):
+        elif self.method == 'Z_lin_slope_fixed':
+            self.abu_profile = Z_lin_slope_fixed
+            
+        elif (self.method == 'Y_stepwise') or (self.method == 'Z_Stepwise'):
             self.abu_profile = stepwise
 
+        elif (self.method == 'Y_stepwise_with_exponential_transition') or (self.method == 'Z_stepwise_with_exponential_transition'):
+            self.abu_profile = exponential
+
         else:
-            raise Exception(f"method={method} not supported.")
+            raise Exception(f"method={self.method} not supported.")
         
         # set abundance scaling method
-        if 'Z' in method:
+        if 'Z' in self.method:
             self.scaled_abundances = self._scaled_abundances_Z
 
-        elif 'Y' in method:
+        elif 'Y' in self.method:
             self.scaled_abundances = self._scaled_abundances_H_He
 
     # scaled abundances
@@ -119,20 +161,62 @@ class CompositionalGradient:
         return abu
 
 
+    # compute homogenous composition for given gradient
+
+    def M_z_tot(self, *args, unit = 'M_Earth', **kwargs):
+        """Computes the total mass of heavy elements inside the planet."""
+        # brute force numerical integration of the total h
+        f = lambda x: self.abu_profile(np.array([x]), *args, **kwargs)
+        retval = integrate.quad(f, 0, self.M_p)
+        
+        # is residual to big?
+        if retval[1]>1e-5:
+            raise Exception("The error of M_z_tot exceeds 1e-5.")
+        
+        if unit == 'M_Jup':
+            return retval[0]
+        elif unit == 'M_Earth':
+            return retval[0] * M_Jup_in_Earth
+    
+    def Z_hom(self, *args, **kwargs):
+        """Computes the metallicity assuming all heavies are distributed homogenously."""
+        return self.M_z_tot(*args, unit='M_Jup', **kwargs)/self.M_p
+    
     # create file for relax_initial_composition
 
-    def m(self, n_bins = 10000, **kwargs):
-        return np.linspace(0, self.M_p, n_bins)
+    def m(self, m_start = 0, m_end = None, n_bins = 10000, **kwargs):
+        
+        if m_end is None:
+            m_end = self.M_p
+        
+        return np.linspace(m_start, m_end, n_bins)
 
     def _create_composition_list(self, *args, **kwargs):
         
+        # we don't need points in a constant regime (i.e., outside of m_2)
+        if 'm_2' in kwargs:
+            # make m create points only between 0 and m_2
+            kwargs['m_end'] = kwargs['m_2']
+        
+        # check m_dilute first to make sure m_end isn't set to m_core
+        elif 'm_dilute' in kwargs:
+            kwargs['m_end'] = kwargs['m_dilute']
+        elif 'm_core' in kwargs:
+            kwargs['m_end'] = kwargs['m_core']
+
         # list of Z(m) (or Y(m))
         mass_bins = self.m(**kwargs)
         abu_list = self.abu_profile(mass_bins, *args, **kwargs)
 
         l = []
+        # first mass bin for m_2:
+        #print(mass_bins)
+        # if 'm_2' in kwargs:
+        #         l.append([(self.M_p-kwargs['m_2'])/self.M_p, *self.scaled_abundances(kwargs["Z_atm"]).values()])
+        #         #mass_bins = mass_bins[:-1]
+
         for i, m_bin in enumerate(mass_bins):
-            # creates list [mass_bin, X_H(mass_bin), ..., X_Mg24(mass_bin)]
+            # creates list [mass_bin, X_H(mass_bin), ..., X_Mg24(mass_bin)]            
             l.append([(self.M_p-m_bin)/self.M_p, *self.scaled_abundances(abu_list[i]).values()])
 
         # reverse order for MESA's relax_inital_composition format
@@ -142,7 +226,7 @@ class CompositionalGradient:
 
         """
 
-        Creates a file for `MESA`'s `relax_inital_composition functionality`. The `**kwargs` depend upon the method used.
+        Creates a file for `MESA`'s `relax_inital_composition functionality`. The `**kwargs` depend upon the self.method used.
         For Z_lin_M_z, we have
 
         Parameters

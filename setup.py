@@ -1,14 +1,15 @@
-import setuptools
+from setuptools import setup, find_packages
 
 with open("README.md", "r") as fh:
 	description = fh.read()
 
-setuptools.setup(
+setup(
 	name="mesa_inlist_manager",
 	version="0.0.1",
 	author="Henrik Knierim",
 	author_email="henrik.knierim@uzh.ch",
-	packages=['mesa_inlist_manager'],
+	packages=find_packages(include=['mesa_inlist_manager','mesa_inlist_manager.*']),
+	package_data={'mesa_inlist_manager':["resources/*"]},
 	description="A simple package for changing MESA inlists.",
 	long_description=description,
 	long_description_content_type="text/markdown",
@@ -17,6 +18,7 @@ setuptools.setup(
 	python_requires='>=3.9',
 	install_requires=[
 		"mesa_reader>=0.3.0",
-		'numpy'
+		'numpy',
+		'scipy'
 		]
 )

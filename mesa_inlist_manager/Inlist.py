@@ -2,7 +2,6 @@ import os
 import numpy as np
 from mesa_inlist_manager.astrophys import *
 
-
 class Inlist:
     def __init__(self, name):
         self.name = name
@@ -78,6 +77,10 @@ class Inlist:
     # sets options in inlist files
 
     def set_option(self, section: str, option: str, value):
+        
+        # conversion such that output is in ''
+        if type(value)==str:
+            value = f"'{value}'"
 
         # check if the option is already present. If not, create it
         try:
@@ -94,7 +97,7 @@ class Inlist:
     def restore_inlist(self):
         with open(self.name, 'w') as file:
             file.write(self.original_inlist)
-        print("restored inlist to original version")
+        print(f"restored {self} to original version")
 
     # sets the option and runs the inlist
     def run_inlist_single_value(self, section: str, option: str, value, run_command='./rn'):
@@ -114,7 +117,7 @@ class Inlist:
     def run_inlist_multiple_value(self, section: str, option: str, values: list, run_command='./rn', logs_parent_directory="../LOGS", inlist_logs=None):
 
         for v in values:
-            log_value = f"'{logs_parent_directory}/{option}/{v}'"
+            log_value = f'{logs_parent_directory}/{option}/{v}'
 
             # check where to save the file
             # e.g., you change inlist_core but the LOGS are saved in inlist_evolve
@@ -128,7 +131,7 @@ class Inlist:
 
     def set_logs_path(self, logs_name, logs_parent_directory="LOGS", inlist_logs=None):
         
-        logs_path = f"'{logs_parent_directory}/{logs_name}'"
+        logs_path = f'{logs_parent_directory}/{logs_name}'
 
         if inlist_logs==None:
             self.set_option('&control','log_directory', logs_path)
@@ -153,12 +156,22 @@ class Inlist:
 
     # common inlist tasks
 
-    def set_initial_mass_in_M_Jup(self, M_p_in_M_J:float):
+    def set_initial_mass_in_M_Jup(self, M_p_in_M_J:float) -> None:
         M_p_in_g = M_Jup_in_g*M_p_in_M_J
         self.set_option('&star_job', 'mass_in_gm_for_create_initial_model', M_p_in_g)
 
-    def set_initial_radius_in_R_Jup(self, R_p_in_R_J:float):
+    def set_initial_radius_in_R_Jup(self, R_p_in_R_J:float) -> None:
         R_p_in_cm = R_Jup_in_cm*R_p_in_R_J
+        self.set_option('&star_job', 'radius_in_cm_for_create_initial_model', R_p_in_cm)
+
+    def set_initial_entropy_in_kergs(self, M_p : float, s0 : float, **kwargs) -> None:
+        """Sets entropy for the inital model
+        
+        This function computes the inital radius that approximately corresponds to `s0`.
+        The resulting value is then set for 'radius_in_cm_for_create_initial_model'.
+        """
+        R_ini = initial_radius(M_p, s0, **kwargs)
+        R_p_in_cm = R_ini * R_Jup_in_cm
         self.set_option('&star_job', 'radius_in_cm_for_create_initial_model', R_p_in_cm)
 
 # class MultipleInlists:

@@ -1,4 +1,8 @@
 import numpy as np
+from scipy.interpolate import griddata
+from os import path
+
+resources_dir = path.join(path.dirname(__file__), 'resources')
 
 # >>> constants >>>
 # physics
@@ -17,6 +21,7 @@ R_Jup_in_Sol = 0.10054
 R_Jup_in_cm = 6.995e9
 M_Jup_in_g = 1.89813e30
 M_Jup_in_Sol = 0.000955
+M_Jup_in_Earth = 317.8
 
 # Earth
 M_Earth_in_Sol = 3.e-6
@@ -44,4 +49,18 @@ def scaled_solar_ratio_mass_fractions(Z):
 
 def specific_entropy(entropy_in_kerg):
     return NA*kB*entropy_in_kerg
+
+
+
+# compute the intial radius for an adiabatic model given the inital mass and center entropy
+def initial_radius(M_p : float, s0 : float, method = 'cubic') -> float: # [M_J] and [kB/baryon]
+    
+    fname = 'initial_entropy_interpolation_file.txt'
+    src = path.join(resources_dir, fname)
+    mass_grid, inital_radius_grid, initial_entropy_grid = np.loadtxt(src, unpack=True)
+    points = np.transpose([mass_grid,initial_entropy_grid])
+    values = inital_radius_grid
+    
+    return griddata(points, values, (M_p, s0), method=method)
+
 # <<< astro functions <<<

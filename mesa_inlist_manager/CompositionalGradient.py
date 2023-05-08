@@ -2,6 +2,7 @@
 # packages
 import numpy as np
 import scipy.integrate as integrate
+from scipy.special import erf
 from mesa_inlist_manager.astrophys import scaled_solar_ratio_mass_fractions, X_Sol, Y_Sol, Z_Sol, M_Earth_in_Jup, M_Jup_in_Earth
 
 # abundace data for basic.net
@@ -93,6 +94,26 @@ def exponential(m:np.ndarray, m_core:float, m_dilute:float, alpha:float, Z_core:
     
     return np.piecewise(m, [m <= m_core, ((m_core <= m) & (m <= m_dilute)), m > m_dilute], [lambda m: Z_core, lambda m: (Z_core-Z_atm)*np.exp(alpha*m)/(np.exp(alpha*m_core)-np.exp(alpha*m_dilute)) + np.exp(m_core*alpha)*(Z_core-Z_atm)/(np.exp(alpha*m_dilute)-np.exp(alpha*m_core)) + Z_core, Z_atm])
 
+def Gaussian(m:np.ndarray, M_z:float, Z_core:float, Z_atm:float, **kwargs):
+    """Returns an array of mass fractions for a Gaussian compositional gradient."""
+    
+    # tests
+    if any(n < 0 for n in m):
+        raise Exception("m should contain positive numbers only")
+    elif M_z < 0:
+        raise Exception("M_z needs to be >= 0")
+    elif not 0<=Z_core<= 1:
+        raise Exception("Z_core needs to be between 0 and 1")
+    elif not 0<=Z_atm<= 1:
+        raise Exception("Z_atm needs to be between 0 and 1")
+    
+    # fix sigma such that the integral of the Gaussian to 3 sigma is equal to M_z
+    # additonally, use a conversion factor for M_z to convert it to Earth masses
+
+    sigma = (2. * M_z) / (6.*M_Jup_in_Earth*Z_atm + (M_Jup_in_Earth*np.sqrt(2.*np.pi) * erf(3./np.sqrt(2.)) * (Z_core-Z_atm)))
+
+    return Z_atm + (Z_core-Z_atm)*np.exp(-m**2/(2.*sigma**2))
+
 class CompositionalGradient:
     def __init__(self, method : str, M_p : float, iso_net = 'planets') -> None:
         
@@ -126,6 +147,9 @@ class CompositionalGradient:
 
         elif (self.method == 'Y_stepwise_with_exponential_transition') or (self.method == 'Z_stepwise_with_exponential_transition'):
             self.abu_profile = exponential
+
+        elif self.method == 'Z_Gaussian':
+            self.abu_profile = Gaussian
 
         else:
             raise Exception(f"method={self.method} not supported.")

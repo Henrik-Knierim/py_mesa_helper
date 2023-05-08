@@ -12,6 +12,27 @@ class Inlist:
     def __str__(self):
         return self.name
 
+    def read_option(self, option: str):
+        """Reads the value of an option in an inlist file."""
+        with open(self.name, 'r') as file:
+            lines = file.readlines()
+
+            for l in lines:
+                if option in l:
+                    line_splitted = l.replace('!', '=')  # for ignoring fortran comments after the value
+                    line_splitted = line_splitted.split('=')
+                    # python formatting
+                    out = line_splitted[1].strip()
+                    out = python_format(out)
+            
+            # if the option is not found, return None
+            try:
+                out
+            except:
+                out = None
+
+        return out
+    
     # finds existing option and changes it to the new value
 
     def change_lines(self, option: str, value):
@@ -218,6 +239,22 @@ def fortran_format(x):
     else:
         out = str(x)
     return out
+
+def python_format(x):
+    """Converts a fortran number to a python number"""
+    try:
+        return int(x)
+    except:
+        try:
+            return float(x.replace('d', 'e'))
+        except:
+            # check if bool
+            if x == ".true.":
+                return True
+            elif x == ".false.":
+                return False
+            else:
+                return x
 
 def create_relax_inital_entropy_file(s_kerg, relax_entropy_filename='relax_entropy_file.dat'):
     s = specific_entropy(s_kerg)

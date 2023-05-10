@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, LinearNDInterpolator
 from os import path
 
 resources_dir = path.join(path.dirname(__file__), 'resources')
@@ -52,15 +52,19 @@ def specific_entropy(entropy_in_kerg):
 
 
 
-# compute the intial radius for an adiabatic model given the inital mass and center entropy
-def initial_radius(M_p : float, s0 : float, method = 'cubic') -> float: # [M_J] and [kB/baryon]
-    
-    fname = 'initial_entropy_interpolation_file.txt'
-    src = path.join(resources_dir, fname)
-    mass_grid, inital_radius_grid, initial_entropy_grid = np.loadtxt(src, unpack=True)
-    points = np.transpose([mass_grid,initial_entropy_grid])
-    values = inital_radius_grid
-    
-    return griddata(points, values, (M_p, s0), method=method)
+# Compute the intial radius for an adiabatic model given the inital mass and center entropy
+
+# Load the entropy data
+entripy_interpolation_file = 'initial_entropy_interpolation_file.txt'
+src_entropy_interpolation = path.join(resources_dir, entripy_interpolation_file)
+mass_grid, inital_radius_grid, initial_entropy_grid = np.loadtxt(src_entropy_interpolation, unpack=True)
+
+# Create a linear interpolation object
+interp = LinearNDInterpolator(list(zip(mass_grid, initial_entropy_grid)), inital_radius_grid)
+
+# Define the function to return interpolated y value for given x and z values
+def initial_radius(M_p : float, s0 : float, **kwargs) -> float: # [M_J] and [kB/baryon]:
+    return interp(M_p, s0)
+
 
 # <<< astro functions <<<

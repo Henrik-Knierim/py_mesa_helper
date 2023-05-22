@@ -31,19 +31,21 @@ class Analysis:
 
         return np.sqrt(variance)
     
-    # def relative_atmospheric_metallicity(self):
-    #     """Gives the ratio between the atmopsheric metallicity (Z_atm) and the average metallicity (Z_avg)."""
+    def relative_atmospheric_metallicity(self):
+        """Gives the ratio between the atmopsheric metallicity (Z_atm) and the average metallicity (Z_avg)."""
 
-    #     # init log object
-    #     log = mr.MesaLogDir(self.src)
+        # init log object
+        log = mr.MesaLogDir(self.src)
         
-    #     # gets the last profile
-    #     profile = log.profile_data()
+        # get the last profile
+        profile = log.profile_data()
 
-    #     # get the metallicity profile
-    #     dm = profile.dm
-    #     Z = profile.z
-
-    #     # calculate the relative atmospheric metallicity
-    #     return Z_atm/Z_avg
+        # get the average metallicity
+        Z_avg = log.history.data('average_o16')[-1]
+        
+        # select the metallicty where convection starts
+        Z_atm = profile.z[profile.sch_stable == 0][0]
+        
+        # calculate the relative atmospheric metallicity
+        return Z_atm/Z_avg
         

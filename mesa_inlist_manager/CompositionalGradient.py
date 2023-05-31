@@ -115,7 +115,7 @@ def Gaussian(m:np.ndarray, M_z:float, Z_core:float, Z_atm:float, **kwargs):
     return Z_atm + (Z_core-Z_atm)*np.exp(-m**2/(2.*sigma**2))
 
 class CompositionalGradient:
-    def __init__(self, method : str, M_p : float, iso_net = 'planets') -> None:
+    def __init__(self, method : str, M_p : float, iso_net = 'planets', **kwargs) -> None:
         
         # planet mass as input parameter
         self.M_p = M_p

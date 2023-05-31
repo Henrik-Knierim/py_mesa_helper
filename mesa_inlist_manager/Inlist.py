@@ -3,14 +3,24 @@ import numpy as np
 from mesa_inlist_manager.astrophys import *
 
 class Inlist:
+    """Class for reading and writing inlist files."""
+    
+    # keeps track of all instances of Inlist
+    instances = []
+
     def __init__(self, name):
+        """Initializes an Inlist object."""
+        # add instance to list of instances
+        self.instances.append(self)
+
+        # name of the inlist file
         self.name = name
 
         with open(self.name, 'r') as file:
             self.original_inlist = file.read()
 
     def __str__(self):
-        return self.name
+        return f'Inlist({self.name})'
 
     def read_option(self, option: str):
         """Reads the value of an option in an inlist file."""
@@ -23,7 +33,7 @@ class Inlist:
                     line_splitted = line_splitted.split('=')
                     # python formatting
                     out = line_splitted[1].strip()
-                    out = python_format(out)
+                    out = Inlist.python_format(out)
             
             # if the option is not found, return None
             try:
@@ -60,7 +70,7 @@ class Inlist:
                         index_option = i
 
                         # fortran formatting
-                        out = fortran_format(value)
+                        out = Inlist.fortran_format(value)
 
                         new_line = l.replace(
                             line_splitted[1].strip(),
@@ -82,7 +92,7 @@ class Inlist:
             lines = file.readlines()
 
             # fortran formatting
-            out = fortran_format(value)
+            out = Inlist.fortran_format(value)
 
             for i, l in enumerate(lines):
                 if section in l:
@@ -113,7 +123,7 @@ class Inlist:
         with open(self.name, 'w') as file:
             file.writelines(lines)
 
-        print(f"Set {option} to {fortran_format(value)}")
+        print(f"Set {option} to {Inlist.fortran_format(value)}")
 
     def restore_inlist(self):
         with open(self.name, 'w') as file:
@@ -195,6 +205,68 @@ class Inlist:
         R_p_in_cm = R_ini * R_Jup_in_cm
         self.set_option('&star_job', 'radius_in_cm_for_create_initial_model', R_p_in_cm)
 
+    def set_convergence_tolerances(self, convergence_tolerances = 'tight', **kwargs)->None:
+        """Sets the convergence tolerances of the inlists."""
+
+        tol_correction_norm, tol_max_correction = Inlist.convergence_tolerance_options(convergence_tolerances)
+        self.set_option('&controls','tol_correction_norm', tol_correction_norm)
+        self.set_option('&controls','tol_max_correction', tol_max_correction)
+
+    @classmethod
+    def restore_all_instances(cls):
+        for instance in cls.instances:
+            instance.restore_inlist()
+
+    @staticmethod
+    def fortran_format(x):
+        if (type(x) == float) or (type(x) == np.float32) or (type(x) == np.float64):
+            log = np.log10(x)
+            exponent = int(np.floor(log))
+            prefactor = 10**(log-exponent)
+            out = f'{prefactor:.6f}d{exponent}'
+
+        else:
+            out = str(x)
+        return out
+    
+    @staticmethod
+    def python_format(x):
+        """Converts a fortran number to a python number"""
+        try:
+            return int(x)
+        except:
+            try:
+                return float(x.replace('d', 'e'))
+            except:
+                # check if bool
+                if x == ".true.":
+                    return True
+                elif x == ".false.":
+                    return False
+                else:
+                    return x
+                
+    @staticmethod
+    def convergence_tolerance_options(convergence_tolerances):
+        """Returns common convergence tolerances."""
+        if convergence_tolerances == "tight":
+            tol_correction_norm = 1e-4
+            tol_max_correction = 3e-2 
+
+        elif convergence_tolerances == "medium":
+            tol_correction_norm = 1e-3
+            tol_max_correction = 8e-2
+
+        elif convergence_tolerances == "loose":
+            tol_correction_norm = 1e-2
+            tol_max_correction = 3e-1
+            
+        elif convergence_tolerances == "very_loose":
+            tol_correction_norm = 5e-2
+            tol_max_correction = 5e-1
+
+        return [tol_correction_norm, tol_max_correction]
+
 # class MultipleInlists:
 
 #     def __init__(self) -> None:
@@ -222,43 +294,17 @@ class Inlist:
 #     #     for key, value in self.inlist_dict.items():
 #     #         inlist_dict[key] = Inlist(value)
 
-def run_inlists(set_function, set_function_input, values, run_command='./rn'):
+# def run_inlists(set_function, set_function_input, values, run_command='./rn'):
 
-    for v in values:
-        set_function(set_function_input, v)
-        os.system(run_command)
-
-
-def fortran_format(x):
-    if (type(x) == float) or (type(x) == np.float32) or (type(x) == np.float64):
-        log = np.log10(x)
-        exponent = int(np.floor(log))
-        prefactor = 10**(log-exponent)
-        out = f'{prefactor:.6f}d{exponent}'
-
-    else:
-        out = str(x)
-    return out
-
-def python_format(x):
-    """Converts a fortran number to a python number"""
-    try:
-        return int(x)
-    except:
-        try:
-            return float(x.replace('d', 'e'))
-        except:
-            # check if bool
-            if x == ".true.":
-                return True
-            elif x == ".false.":
-                return False
-            else:
-                return x
+#     for v in values:
+#         set_function(set_function_input, v)
+#         os.system(run_command)
 
 def create_relax_inital_entropy_file(s_kerg, relax_entropy_filename='relax_entropy_file.dat'):
     s = specific_entropy(s_kerg)
     with open(relax_entropy_filename, 'w') as file:
         file.write('1\n')
-        file.write(f'1  {fortran_format(s)}')
+        file.write(f'1  {Inlist.fortran_format(s)}')
     print(f"Created entropy profile with s_kerg = {s_kerg}")
+
+

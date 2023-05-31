@@ -1,4 +1,4 @@
-class Run:
+class rn:
     """Modifies rn-files"""
 
     def __init__(self, name : str) -> None:

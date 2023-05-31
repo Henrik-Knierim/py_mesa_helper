@@ -134,7 +134,7 @@ class MultipleSimulationAnalysis:
             self.simulations = glob.glob(self.src +'/'+ "M_p_{:.2f}_s0_{:.1f}".format(M_p, s0))
 
         # sort the simulations by mass
-        self.simulations.sort(key = lambda x: float(x.split('_')[2]))
+        self.simulations.sort(key = lambda x: float(x.split('_')[-3]))
 
     def _get_planetary_mass_and_intial_entropy(self):
         """Gives the masses of the planets."""
@@ -144,8 +144,8 @@ class MultipleSimulationAnalysis:
 
         for i, simulation in enumerate(self.simulations):
             parts = simulation.split('_')
-            self.planetary_mass[i] = float(parts[2])
-            self.initial_entropy[i] = float(parts[4])
+            self.planetary_mass[i] = float(parts[-3])
+            self.initial_entropy[i] = float(parts[-1])
 
     def heterogeneity(self, **kwargs):
         """Gives the deviation of the metallicity from a homogeneous profile."""

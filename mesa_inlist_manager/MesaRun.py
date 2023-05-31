@@ -1,7 +1,7 @@
 import os
 import mesa_reader as mr
 from mesa_inlist_manager.Inlist import Inlist
-
+from mesa_inlist_manager.astrophys import specific_entropy
 
 class MesaRun:
     """Utilities for MESA simulations."""
@@ -112,6 +112,14 @@ class MesaRun:
     def relaxedQ(mod_file = 'planet_relax_composition.mod'):
         """Returns True if the mod_file exits."""
         return os.path.isfile(mod_file)
-        
+    
+    @staticmethod
+    def create_relax_inital_entropy_file(s_kerg, relax_entropy_filename='relax_entropy_file.dat'):
+        s = specific_entropy(s_kerg)
+        with open(relax_entropy_filename, 'w') as file:
+            file.write('1\n')
+            file.write(f'1  {Inlist.fortran_format(s)}')
+        print(f"Created entropy profile with s_kerg = {s_kerg}")
+            
 
         

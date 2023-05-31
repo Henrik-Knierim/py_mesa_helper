@@ -8,7 +8,7 @@ class Inlist:
     # keeps track of all instances of Inlist
     instances = []
 
-    def __init__(self, name):
+    def __init__(self, name = None, version = 'r10108'):
         """Initializes an Inlist object."""
         # add instance to list of instances
         self.instances.append(self)
@@ -16,11 +16,44 @@ class Inlist:
         # name of the inlist file
         self.name = name
 
-        with open(self.name, 'r') as file:
-            self.original_inlist = file.read()
+        # version of MESA
+        self.version = version
+
+        # save orginal inlist if name is given
+        if name is not None:
+            with open(self.name, 'r') as file:
+                self.original_inlist = file.read()
 
     def __str__(self):
         return f'Inlist({self.name})'
+    
+
+    ### changin options ###
+
+    # checks section of the option
+    
+    def _optionQ(self, section : str, option : str):
+        """Checks if the option is in the given section."""
+        src = path.join(resources_dir, self.version, f'{section}.defaults')
+        with open(src, 'r') as file:
+            for line in file:
+                    # remove whitespace
+                    line = line.strip()
+                    # check if line starts with option
+                    if line.startswith(option):
+                        return True
+        return False
+    
+    def _get_section_of_option(self, option : str):
+        """Returns the section of an option."""
+        if self._optionQ('controls', option):
+            return '&controls'
+        elif self._optionQ('star_job', option):
+            return '&star_job'
+        elif self._optionQ('pgstar', option):
+            return '&pgstar'
+        else:
+            raise ValueError(f'Option {option} not found in MESA {self.version}.')
 
     def read_option(self, option: str):
         """Reads the value of an option in an inlist file."""
@@ -85,7 +118,7 @@ class Inlist:
 
     # create lines with new option
 
-    def create_lines(self, section: str, option: str, value):
+    def _create_lines_explicit_section(self, section: str, option: str, value):
 
         with open(self.name, 'r') as file:
 
@@ -104,10 +137,16 @@ class Inlist:
             lines.insert(index_section + 2, f"\t{option} = {out}\n")
 
         return lines
+    
+    def create_lines(self, option : str, value):
+        """Creates lines for a new option in an inlist file."""
+
+        section = self._get_section_of_option(option)
+        return self._create_lines_explicit_section(section, option, value)
 
     # sets options in inlist files
 
-    def set_option(self, section: str, option: str, value):
+    def set_option(self, option: str, value):
         
         # conversion such that output is in ''
         if type(value)==str:
@@ -117,7 +156,7 @@ class Inlist:
         try:
             lines = self.change_lines(option, value)
         except:
-            lines = self.create_lines(section, option, value)
+            lines = self.create_lines(option, value)
 
         # write new lines into the inlist
         with open(self.name, 'w') as file:
@@ -131,10 +170,10 @@ class Inlist:
         print(f"restored {self} to original version")
 
     # sets the option and runs the inlist
-    def run_inlist_single_value(self, section: str, option: str, value, run_command='./rn'):
+    def run_inlist_single_value(self, option: str, value, run_command='./rn'):
 
         # set the option
-        self.set_option(section, option, value)
+        self.set_option(option, value)
 
         # run the inlist
         os.system(run_command)
@@ -145,7 +184,7 @@ class Inlist:
         self.restore_inlist()
 
     # same as run_inlist_single_paramter but for a list of values
-    def run_inlist_multiple_value(self, section: str, option: str, values: list, run_command='./rn', logs_parent_directory="../LOGS", inlist_logs=None):
+    def run_inlist_multiple_value(self, option: str, values: list, run_command='./rn', logs_parent_directory="../LOGS", inlist_logs=None):
 
         for v in values:
             log_value = f'{logs_parent_directory}/{option}/{v}'
@@ -158,7 +197,7 @@ class Inlist:
             else:
                 self.set_option('&controls', 'log_directory', log_value)
 
-            self.run_inlist_single_value(section, option, v, run_command)
+            self.run_inlist_single_value(option, v, run_command)
 
     def set_logs_path(self, logs_name, logs_parent_directory="LOGS", inlist_logs=None):
         
@@ -184,6 +223,8 @@ class Inlist:
                 lengt_of_file = 1
 
             file.write(f"{lengt_of_file}\t{value}\n")
+
+    
 
     # common inlist tasks
 
@@ -266,6 +307,8 @@ class Inlist:
             tol_max_correction = 5e-1
 
         return [tol_correction_norm, tol_max_correction]
+    
+    
 
 # class MultipleInlists:
 
@@ -299,12 +342,5 @@ class Inlist:
 #     for v in values:
 #         set_function(set_function_input, v)
 #         os.system(run_command)
-
-def create_relax_inital_entropy_file(s_kerg, relax_entropy_filename='relax_entropy_file.dat'):
-    s = specific_entropy(s_kerg)
-    with open(relax_entropy_filename, 'w') as file:
-        file.write('1\n')
-        file.write(f'1  {Inlist.fortran_format(s)}')
-    print(f"Created entropy profile with s_kerg = {s_kerg}")
 
 

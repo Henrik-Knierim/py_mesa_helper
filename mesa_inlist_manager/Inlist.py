@@ -26,7 +26,6 @@ class Inlist:
 
     def __str__(self):
         return f'Inlist({self.name})'
-    
 
     ### changin options ###
 
@@ -193,9 +192,9 @@ class Inlist:
             # e.g., you change inlist_core but the LOGS are saved in inlist_evolve
 
             if inlist_logs != None:
-                Inlist(inlist_logs).set_option('&controls', 'log_directory', log_value)
+                Inlist(inlist_logs).set_option('log_directory', log_value)
             else:
-                self.set_option('&controls', 'log_directory', log_value)
+                self.set_option('log_directory', log_value)
 
             self.run_inlist_single_value(option, v, run_command)
 
@@ -204,10 +203,10 @@ class Inlist:
         logs_path = f'{logs_parent_directory}/{logs_name}'
 
         if inlist_logs==None:
-            self.set_option('&control','log_directory', logs_path)
+            self.set_option('log_directory', logs_path)
 
         else:
-            Inlist(inlist_logs).set_option('&control','log_directory', logs_path)
+            Inlist(inlist_logs).set_option('log_directory', logs_path)
 
     def set_logs_path_multiple_values(self, value, value_header_name='value', logs_parent_directory="LOGS"):
         
@@ -230,11 +229,11 @@ class Inlist:
 
     def set_initial_mass_in_M_Jup(self, M_p_in_M_J:float) -> None:
         M_p_in_g = M_Jup_in_g*M_p_in_M_J
-        self.set_option('&star_job', 'mass_in_gm_for_create_initial_model', M_p_in_g)
+        self.set_option('mass_in_gm_for_create_initial_model', M_p_in_g)
 
     def set_initial_radius_in_R_Jup(self, R_p_in_R_J:float) -> None:
         R_p_in_cm = R_Jup_in_cm*R_p_in_R_J
-        self.set_option('&star_job', 'radius_in_cm_for_create_initial_model', R_p_in_cm)
+        self.set_option('radius_in_cm_for_create_initial_model', R_p_in_cm)
 
     def set_initial_entropy_in_kergs(self, M_p : float, s0 : float, **kwargs) -> None:
         """Sets entropy for the inital model
@@ -244,30 +243,61 @@ class Inlist:
         """
         R_ini = initial_radius(M_p, s0, **kwargs)
         R_p_in_cm = R_ini * R_Jup_in_cm
-        self.set_option('&star_job', 'radius_in_cm_for_create_initial_model', R_p_in_cm)
+        self.set_option('radius_in_cm_for_create_initial_model', R_p_in_cm)
 
-    def set_convergence_tolerances(self, convergence_tolerances = 'tight', **kwargs)->None:
+    def set_convergence_tolerances(self, convergence_tolerances = 'very_tight', **kwargs)->None:
         """Sets the convergence tolerances of the inlists."""
 
         tol_correction_norm, tol_max_correction = Inlist.convergence_tolerance_options(convergence_tolerances)
-        self.set_option('&controls','tol_correction_norm', tol_correction_norm)
-        self.set_option('&controls','tol_max_correction', tol_max_correction)
+        self.set_option('tol_correction_norm', tol_correction_norm)
+        self.set_option('tol_max_correction', tol_max_correction)
 
     @classmethod
     def restore_all_instances(cls):
         for instance in cls.instances:
             instance.restore_inlist()
 
+    # delete all instances of Inlist
+    @classmethod
+    def delete_all_instances(cls):
+        """Deletes all instances of Inlist."""
+        for instance in cls.instances:
+            del instance
+
+    # delete latest instance of Inlist
+    @classmethod
+    def delete_latest_instance(cls):
+        """Deletes the latest instance of Inlist."""
+        del cls.instances[-1]
+
     @staticmethod
     def fortran_format(x):
-        if (type(x) == float) or (type(x) == np.float32) or (type(x) == np.float64):
+        """Converts a python type to a fortran type"""
+        if isinstance(x, float) or isinstance(x, np.float32) or isinstance(x, np.float64):
+            
+            # Check if the number is zero float
+            if x == 0.0:
+                return '0d0'
+            
             log = np.log10(x)
             exponent = int(np.floor(log))
-            prefactor = 10**(log-exponent)
-            out = f'{prefactor:.6f}d{exponent}'
+            prefactor = 10 ** (log - exponent)
+            
+            # Check if the prefactor is an integer or has trailing zeros
+            if prefactor.is_integer():
+                prefactor = int(prefactor)
+            
+            out = f'{prefactor:.6g}d{exponent}'  # Use the 'g' format specifier
+
+        elif isinstance(x, bool):
+            if x:
+                out = ".true."
+            else:
+                out = ".false."
 
         else:
             out = str(x)
+        
         return out
     
     @staticmethod
@@ -290,9 +320,13 @@ class Inlist:
     @staticmethod
     def convergence_tolerance_options(convergence_tolerances):
         """Returns common convergence tolerances."""
-        if convergence_tolerances == "tight":
+        if convergence_tolerances == "very_tight":
             tol_correction_norm = 1e-4
-            tol_max_correction = 3e-2 
+            tol_max_correction = 3e-2
+
+        elif convergence_tolerances == "tight":
+            tol_correction_norm = 1e-4
+            tol_max_correction = 8e-2
 
         elif convergence_tolerances == "medium":
             tol_correction_norm = 1e-3

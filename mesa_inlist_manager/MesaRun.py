@@ -20,7 +20,30 @@ class MesaRun:
             'overshoot_f_above_nonburn_shell',    # 1d-2
             'overshoot_f0_above_nonburn_shell',   # 2d-3
             'overshoot_f_below_nonburn_shell',
-            'overshoot_f0_below_nonburn_shell'
+            'overshoot_f0_below_nonburn_shell',
+            'column_depth_for_irradiation',
+            'irradiation_flux',
+            'max_years_for_timestep',
+            'use_Ledoux_criterion',
+            'mesh_delta_coeff',
+            'inital_age',
+            'kappa_file_prefix',
+            'kappa_lowT_prefix',
+        ]
+    
+    EVOLUTION_OPTIONS = [
+        'tol_correction_norm',
+        'tol_max_correction',
+        'max_years_for_timestep',
+        'mesh control',
+        'mesh_delta_coeff',
+        'mesh_logX_species(1)',
+        'mesh_logX_min_for_extra(1)',
+        'mesh_dlogX_dlogP_extra(1)',
+        'mesh_dlogX_dlogP_full_on(1)',
+        'mesh_dlogX_dlogP_full_off(1)',
+        'column_depth_for_irradiation',
+        'irradiation_flux'
         ]
 
     def __init__(self, src = 'LOGS') -> None:
@@ -35,6 +58,8 @@ class MesaRun:
         for option in self.MIXING_PARAMTERS:
             value = Inlist(inlist_name).read_option(option)
             self.mixing_params[option] = value
+            # release Inlist object
+            Inlist.delete_latest_instance()
     
     def export_mixing_parameters(self):
         """Writes mixing parameters to file in logs parent directory"""
@@ -45,6 +70,7 @@ class MesaRun:
         with open(self.src + '/setup.txt', 'w') as file:
             for key, value in self.mixing_params.items():
                 file.write(f"{key}\t{value}\n")
+        print("Mixing parameters exported to setup.txt")
 
     def export_setup(self, M_p : float, s0 : float, output_file : str = 'failed_simulations.txt'):
         """Writes setup to file in logs parent directory"""
@@ -60,6 +86,20 @@ class MesaRun:
                 lengt_of_file = 1
 
             file.write(f"{M_p:.2f}\t{s0:.1f}\n")
+
+    def export_evolution_options(self, M_p : float, s0 : float, inlist_name : str = 'inlist_evolve')->None:
+        """Writes evolution options to evolution_parameters.txt inside the LOGS directory."""
+        
+        path = self.create_logs_path_string(M_p, s0)
+        file = os.path.join(path, 'evolution_parameters.txt')
+        with open(file, 'w') as file:
+            for option in self.EVOLUTION_OPTIONS:
+                value = Inlist(inlist_name).read_option(option)
+                file.write(f"{option}\t{value}\n")
+                # release Inlist object
+                Inlist.delete_latest_instance()
+                
+        print(f"Evolution options of {path} exported to evolution_parameters.txt")
 
     def create_logs_path_string(self, M_p: float, s0: float) -> str:
         """Creates the LOGS path string."""
@@ -100,13 +140,16 @@ class MesaRun:
 
         t_final = Inlist(inlist_name).read_option("max_age")
 
+        # release Inlist object
+        Inlist.delete_latest_instance()
+
         return t_final*(1-age_tolerance) < age < t_final*(1+age_tolerance)
     
     def heavy_mass_convergedQ(self, M_p, s0, heavy_mass_tol = 1e-2, **kwargs)->bool:
         """Checks if the heavy mass of the planet has converged"""
         # lazy import to avoid circular import
         from mesa_inlist_manager.Analysis import Analysis
-        return Analysis().heavy_mass_error(M_p, s0, **kwargs) < heavy_mass_tol
+        return Analysis(self.src).heavy_mass_error(M_p, s0, **kwargs) < heavy_mass_tol
     
     @staticmethod
     def relaxedQ(mod_file = 'planet_relax_composition.mod'):

@@ -1,6 +1,7 @@
 # class for analyzing the output of a MESA run
 import numpy as np
 import mesa_reader as mr
+import os
 import glob
 from tabulate import tabulate
 from mesa_inlist_manager.astrophys import M_Earth_in_g, M_Earth_in_Sol
@@ -13,7 +14,7 @@ class Analysis:
         # location of the LOGS directory
         self.src = src
     
-    def heterogeneity(self, model_number = -1):
+    def heterogeneity(self, model_number = -1, **kwargs):
         """Gives the deviation of the metallicity from a homogeneous profile."""
 
         # init log object
@@ -104,7 +105,34 @@ class Analysis:
         M_z_out = log.history.data('total_mass_o16')[-1]/M_Earth_in_Sol
 
         return abs(1-M_z_out/M_z_in)
-        
+    
+    def get_history_data(self, data_name, model_number = -1):
+        """Returns the data from the history.data file."""
+
+        if model_number == -1:
+            get_data = lambda history, data_name: history.data(data_name)[-1]
+        else:
+            get_data = lambda history, data_name: history.data_at_model_number(data_name, m_num = model_number)
+
+        history_file = mr.MesaData(os.path.join(self.src,'history.data'))
+            
+        # get the data for the i-th simulation
+        data = get_data(history_file, data_name)
+
+        return data
+    
+    def get_evolution_parameters(self, keys : list) -> dict:
+        """Gets the specified paramters from the evolution_parameters.txt file."""
+        from mesa_inlist_manager.Inlist import Inlist
+        evolution_params = {}
+        with open(os.path.join(self.src,'evolution_parameters.txt'), 'r') as file:
+            for line in file:
+                key, value = line.strip().split('\t')
+                if key in keys:
+                    evolution_params[key] = Inlist.python_format(value)
+
+        return evolution_params
+
 class MultipleSimulationAnalysis:
     """Class for analyzing multiple simulations."""
 
@@ -147,6 +175,20 @@ class MultipleSimulationAnalysis:
             self.planetary_mass[i] = float(parts[-3])
             self.initial_entropy[i] = float(parts[-1])
 
+    def get_history_data(self, data_name, model_number = -1):
+        """Returns the n-th entry of the history data for each simulation."""
+
+        analysis = Analysis()
+
+        # init data that will be returned
+        data = np.zeros(len(self.simulations))
+        for i, simulation in enumerate(self.simulations):
+            analysis.src = simulation
+            data[i] = analysis.get_history_data(data_name, model_number = model_number)
+        
+        return data
+
+
     def heterogeneity(self, **kwargs):
         """Gives the deviation of the metallicity from a homogeneous profile."""
 
@@ -175,6 +217,32 @@ class MultipleSimulationAnalysis:
         
         return relative_atmospheric_metallicity
     
+    def get_evolution_parameters(self, keys : list):
+        """Gives the specified parameters in evolution_parameters.txt for each simulation."""
+            
+        # init analysis object
+        analysis = Analysis()
+
+        # get the evolution parameters for each simulation
+        evolution_parameters = {
+            'M_p' : self.planetary_mass,
+            's0' : self.initial_entropy
+        }
+
+        # init the evolution parameters
+        for key in keys:
+            evolution_parameters[key] = np.zeros(len(self.simulations))
+
+        # get the evolution parameters for each simulation
+        for i, simulation in enumerate(self.simulations):
+            analysis.src = simulation
+
+            d = analysis.get_evolution_parameters(keys)
+            for key in keys:
+                evolution_parameters[key][i] = d[key]
+
+        return evolution_parameters
+    
     def print_simulation_results(self, **kwargs) -> None:
         """Prints the results of a number of simulations."""
         
@@ -182,7 +250,8 @@ class MultipleSimulationAnalysis:
         Z_atm = np.zeros(len(self.simulations))
         age = np.zeros(len(self.simulations))
         Z_atm_Z_avg_ratio = self.relative_atmospheric_metallicity()
-        
+        heterogeneity = self.heterogeneity()
+
         for i, l in enumerate(self.simulations):
 
             # init LOGS directory
@@ -199,6 +268,6 @@ class MultipleSimulationAnalysis:
             age[i] = log.history.star_age[-1]
 
             # mass error
-            rel_M_z_err[i] = Analysis.heavy_mass_error(M_p=self.planetary_mass[i], s0=self.initial_entropy[i], **kwargs)
-
-        print(tabulate(np.array([self.planetary_mass, self.initial_entropy, age, Z_atm, Z_atm_Z_avg_ratio, rel_M_z_err]).T, headers = ['M_p', 's0', 'age', 'Z_atm', 'Z_atm/Z_avg','rel_M_z_err'], floatfmt=(".2f", ".1f", ".2e", ".4f", ".4f", ".4f")))
+            rel_M_z_err[i] = Analysis(self.src).heavy_mass_error(M_p=self.planetary_mass[i], s0=self.initial_entropy[i], **kwargs)
+        
+        print(tabulate(np.array([self.planetary_mass, self.initial_entropy, age, Z_atm, Z_atm_Z_avg_ratio, heterogeneity, rel_M_z_err]).T, headers = ['M_p', 's0', 'age', 'Z_atm', 'Z_atm/Z_avg','heterogeneity','rel_M_z_err'], floatfmt=(".2f", ".1f", ".2e", ".4f", ".4f",".4f", ".4f")))

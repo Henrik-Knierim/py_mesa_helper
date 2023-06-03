@@ -135,11 +135,14 @@ class MesaPlot:
             # initalize MultiSimulationAnalysis object
             sim = MultipleSimulationAnalysis(self.src, s0 = s0)
 
+            # style the plot
+            label = kwargs.get("label", f'{s0:.1f} kb/mu')
+
             # plot the heterogeneity
             if model_number == 1:
                 plt.plot(sim.planetary_mass, sim.heterogeneity(**kwargs), label = f'initial')
             else:
-                plt.plot(sim.planetary_mass, sim.heterogeneity(**kwargs), label = f's0 = {s0}')
+                plt.plot(sim.planetary_mass, sim.heterogeneity(**kwargs), label = label)
         
         plt.xlabel('planetary mass [M_J]')
         plt.ylabel('heterogeneity')
@@ -152,8 +155,10 @@ class MesaPlot:
             # initalize MultiSimulationAnalysis object
             sim = MultipleSimulationAnalysis(self.src, s0=s0)
 
+            # style the plot
+            label = kwargs.get("label", f'{s0:.1f} kb/mu')
             # plot the relative atmospheric metallicity
-            plt.plot(sim.planetary_mass, sim.relative_atmospheric_metallicity(), label = f's0 = {s0}')
+            plt.plot(sim.planetary_mass, sim.relative_atmospheric_metallicity(), label = label)
         
         plt.xlabel('planetary mass [M_J]')
         plt.ylabel('relative atmospheric metallicity')
@@ -258,6 +263,21 @@ class MesaPlot:
         plt.xlabel('mass [$M_J$]')
         plt.ylabel('mean molecular weight')
         plt.title(f'Mean molecular weight for {M_p:.2f} M_J, {s0:.1f} kb/mu')
+
+    def relative_cumulative_energy_error_plot(self, initial_entropies : list, **kwargs)->None:
+        """Plots the relative cumulative energy error as a function of planetary mass."""
+        
+        for s0 in initial_entropies:
+            # initalize MultiSimulationAnalysis object
+            sim = MultipleSimulationAnalysis(self.src, s0 = s0)
+            x = sim.planetary_mass
+            y = sim.get_history_data('rel_cumulative_energy_error')
+            label = kwargs.get("label", f'{s0:.1f} kb/mu')
+            plt.plot(x, y, label = label)
+            
+        plt.xlabel('planetary mass [M_J]')
+        plt.ylabel('relative cumulative energy error')
+        plt.legend()
         
 """ The following code needs some additional work. 
 class MesaPlot:

@@ -208,7 +208,7 @@ class CompositionalGradient:
     
     # create file for relax_initial_composition
 
-    def m(self, m_start = 0, m_end = None, n_bins = 10000, **kwargs):
+    def m(self, m_start = 0, m_end = None, n_bins = 20_000, **kwargs):
         
         if m_end is None:
             m_end = self.M_p

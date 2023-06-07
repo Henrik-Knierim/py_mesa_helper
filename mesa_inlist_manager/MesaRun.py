@@ -29,13 +29,16 @@ class MesaRun:
             'inital_age',
             'kappa_file_prefix',
             'kappa_lowT_prefix',
+            'use_lnS_for_eps_grav',
+            'include_dmu_dt_in_eps_grav',
+            'use_dEdRho_form_for_eps_grav',
+            'eosDT_use_linear_interp_for_X'
         ]
     
     EVOLUTION_OPTIONS = [
         'tol_correction_norm',
         'tol_max_correction',
         'max_years_for_timestep',
-        'mesh control',
         'mesh_delta_coeff',
         'mesh_logX_species(1)',
         'mesh_logX_min_for_extra(1)',
@@ -126,6 +129,13 @@ class MesaRun:
                     print("deleting: ", logs_path)
                     os.system(f'rm -r {logs_path}')
 
+        except FileNotFoundError:
+            print("No failed_simulations.txt found.")
+
+    def delete_failed_simulations_file(self)->None:
+        """Deletes the file containing the failed simulations, typically failed_simulations.txt"""
+        try:
+            os.system(f'rm {self.src}/failed_simulations.txt')
         except FileNotFoundError:
             print("No failed_simulations.txt found.")
 

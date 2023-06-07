@@ -223,28 +223,96 @@ class MesaPlot:
         plt.tight_layout()
 
 
-    def convection_stability_gradient_plot(self, M_p, s0, plot_grad_radQ = True, **kwargs)->None:
+    def _convection_gradient_plot(self, ax, M_p, s0, grad_radQ = False, x_axis='m', **kwargs)->None:
         """Plots the adiabatic temperature, Ledoux, and radiative gradient."""
 
-        logs_path = MesaRun(self.src).create_logs_path_string(M_p, s0)
-        logs = mr.MesaLogDir(logs_path)
+        # set the logs path
+        # if not defined, use the default logs path
+        kwargs.get('logs_path', MesaRun(self.src).create_logs_path_string(M_p, s0))
+        logs = mr.MesaLogDir(kwargs['logs_path'])
+        
 
         # get the data
-        profile = logs.profile_data(**kwargs)
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in logs.profile_data.__code__.co_varnames}
+        profile = logs.profile_data(**profile_data_kwargs)
+
         m = profile.mass
+        logP = profile.logP
         grad_ad = profile.grada
         grad_Ledoux = profile.gradL
         grad_rad = profile.gradr
+        grad_comp = profile.gradL_composition_term
 
         # plot the gradients
-        #plt.plot(m/M_Jup_in_Sol, grad_ad, label = 'grad_ad')
-        #plt.plot(m/M_Jup_in_Sol, grad_Ledoux, label = 'grad_Ledoux')
-        plt.plot(m/M_Jup_in_Sol, grad_Ledoux, label = f'{M_p:.2f} M_J')
-        if plot_grad_radQ: plt.plot(m/M_Jup_in_Sol, grad_rad, label = 'grad_rad')
+        if x_axis == 'm':
+            ax.plot(m/M_Jup_in_Sol, grad_ad, label = 'grad_ad')
+            ax.plot(m/M_Jup_in_Sol, grad_Ledoux, label = 'grad_Ledoux')
+            ax.plot(m/M_Jup_in_Sol, grad_comp, label = 'grad_comp')
+            if grad_radQ: ax.plot(m/M_Jup_in_Sol, grad_rad, label = 'grad_rad')
+            ax.set_xlabel('mass [$M_J$]')
 
-        plt.xlabel('mass [$M_J$]')
-        plt.ylabel('Ledoux gradient')
-        #plt.title(f'Convection stability for {M_p:.2f} M_J, {s0:.1f} kb/mu')
+        elif x_axis == 'logP':
+            ax.plot(logP, grad_ad, label = 'grad_ad')
+            ax.plot(logP, grad_Ledoux, label = 'grad_Ledoux')
+            ax.plot(logP, grad_comp, label = 'grad_comp')
+            if grad_radQ: ax.plot(logP, grad_rad, label = 'grad_rad')
+            ax.set_xlabel('logP [cgs]')
+            ax.invert_xaxis()
+
+        ax.set_yscale('log')
+        ax.set_ylabel('gradients')
+        ax.set_title(f'Convection gradients for {M_p:.2f} M_J, {s0:.1f} kb/mu')
+        ax.legend()
+
+    def _convection_stability_plot(self, ax, M_p, s0, x_axis='m', **kwargs)->None:
+        """Plots the Schwarzschild and Ledoux criteria for convection stability."""
+        
+        # set the logs path
+        # if not defined, use the default logs path
+        kwargs.get('logs_path', MesaRun(self.src).create_logs_path_string(M_p, s0))
+        logs = mr.MesaLogDir(kwargs['logs_path'])
+
+        # get the data
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in logs.profile_data.__code__.co_varnames}
+        profile = logs.profile_data(**profile_data_kwargs)
+
+        m = profile.mass
+        logP = profile.logP
+
+        schwarzschild=profile.sch_stable
+        ledoux=profile.ledoux_stable
+
+        # plot the gradients
+        if x_axis == 'm':
+            ax.plot(m/M_Jup_in_Sol, schwarzschild, label = 'Schwarzschild criterion')
+            ax.plot(m/M_Jup_in_Sol, ledoux, label = 'Ledoux criterion')
+            ax.set_xlabel('mass [$M_J$]')
+
+        elif x_axis == 'logP':
+            ax.plot(logP, schwarzschild, label = 'Schwarzschild criterion')
+            ax.plot(logP, ledoux, label = 'Ledoux criterion')
+            ax.set_xlabel('logP [cgs]')
+            ax.invert_xaxis()
+     
+        ax.set_ylabel('stability criteria')
+        ax.set_title(f'Convection stability for {M_p:.2f} M_J, {s0:.1f} kb/mu')
+        ax.legend()
+
+    def convective_stability_overview_plot(self, M_p, s0, **kwargs)->None:
+        """Plots a the convective gradients and the stability criteria in a grid of subplots for both, mass and pressure."""
+        
+        # Create a 2x2 grid of subplots
+        fig, axs = plt.subplots(2, 2, figsize = (9, 6))
+
+        # Plot data in each subplot
+        self._convection_gradient_plot(axs[0,0], M_p, s0, **kwargs)
+        self._convection_gradient_plot(axs[0,1], M_p, s0, x_axis='logP', **kwargs)
+
+        self._convection_stability_plot(axs[1,0], M_p, s0, **kwargs)
+        self._convection_stability_plot(axs[1,1], M_p, s0, x_axis='logP', **kwargs)
+
+        # Adjust spacing between subplots
+        plt.tight_layout()
 
     def mean_molecular_weight_plot(self, M_p, s0, **kwargs)->None:
         """Plots the mean molecular weight as a function of mass coordinate."""

@@ -60,20 +60,20 @@ class Inlist:
             lines = file.readlines()
 
             for l in lines:
-                if option in l:
+                # pick out the line with the option
+                if l.strip().startswith(option):
+
                     line_splitted = l.replace('!', '=')  # for ignoring fortran comments after the value
+
                     line_splitted = line_splitted.split('=')
+
                     # python formatting
                     out = line_splitted[1].strip()
-                    out = Inlist.python_format(out)
-            
-            # if the option is not found, return None
-            try:
-                out
-            except:
-                out = None
 
-        return out
+                    out = Inlist.python_format(out)
+                    return out
+
+        return None
     
     # finds existing option and changes it to the new value
 

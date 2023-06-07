@@ -4,6 +4,7 @@
 import matplotlib.pyplot as plt
 import mesa_reader as mr
 import numpy as np
+import os
 from mesa_inlist_manager.Analysis import Analysis, MultipleSimulationAnalysis
 from mesa_inlist_manager.astrophys import Z_Sol, M_Jup_in_Sol, R_Jup_in_Sol
 from mesa_inlist_manager.MesaRun import MesaRun
@@ -140,13 +141,49 @@ class MesaPlot:
 
             # plot the heterogeneity
             if model_number == 1:
-                plt.plot(sim.planetary_mass, sim.heterogeneity(**kwargs), label = f'initial')
+                plt.plot(sim.planetary_mass, sim.heterogeneity(**kwargs), 'o-', label = f'initial')
             else:
-                plt.plot(sim.planetary_mass, sim.heterogeneity(**kwargs), label = label)
+                plt.plot(sim.planetary_mass, sim.heterogeneity(**kwargs), 'o-', label = label)
         
         plt.xlabel('planetary mass [M_J]')
         plt.ylabel('heterogeneity')
         plt.legend()
+
+    def heterogeneity_evolution_plot(self)-> None:
+        """Plots the heterogeneity evolution of a simulation."""
+
+        # init history file
+        t, h = Analysis(self.src).heterogeneity_evolution()
+
+        # get the energy error
+        history_file = mr.MesaData(os.path.join(self.src,'history.data'))
+
+        age = history_file.data('star_age')
+        # rel_E_err = history_file.data('rel_error_in_energy_conservation')
+        abs_rel_E_err = history_file.data('rel_cumulative_energy_error')
+
+        # plot both quantities on the same axis
+        fig, ax1 = plt.subplots()
+        ax1.set_xlabel('age [yr]')
+        ax1.set_ylabel('heterogeneity')
+        ax1.plot(t, h, 'b-')
+        ax1.tick_params('y', colors='b')
+        ax1.set_xscale('log')
+
+        # plot the relative error
+        ax2 = ax1.twinx()
+        ax2.plot(age, abs_rel_E_err, 'r-')
+        ax2.set_ylabel('relative cumulative energy error', color='r')
+        ax2.tick_params('y', colors='r')
+        ax2.set_xscale('log')
+
+        # Add gridlines at specific positions
+        grid_positions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+        for pos in grid_positions:
+            ax2.axhline(y=pos, color='r', linestyle='--', linewidth=0.5, alpha=0.5)
+
+        ax2.set_ylim(0, 0.35)
+
 
     def relative_atmospheric_metallicity_plot(self, inital_entropies : list, **kwargs)-> None:
         """Plots the realtive atmospheric metallicity of multiple simulations as a function of planetary mass."""
@@ -158,7 +195,7 @@ class MesaPlot:
             # style the plot
             label = kwargs.get("label", f'{s0:.1f} kb/mu')
             # plot the relative atmospheric metallicity
-            plt.plot(sim.planetary_mass, sim.relative_atmospheric_metallicity(), label = label)
+            plt.plot(sim.planetary_mass, sim.relative_atmospheric_metallicity(), 'o-', label = label)
         
         plt.xlabel('planetary mass [M_J]')
         plt.ylabel('relative atmospheric metallicity')
@@ -341,149 +378,41 @@ class MesaPlot:
             x = sim.planetary_mass
             y = sim.get_history_data('rel_cumulative_energy_error')
             label = kwargs.get("label", f'{s0:.1f} kb/mu')
-            plt.plot(x, y, label = label)
+            plt.plot(x, y, 'o-', label = label)
             
         plt.xlabel('planetary mass [M_J]')
         plt.ylabel('relative cumulative energy error')
         plt.legend()
+
+    def energy_error_evolution_plot(self, **kwargs)->None:
+        """Plots the relative cumulative energy error and relative error for a single model."""
         
-""" The following code needs some additional work. 
-class MesaPlot:
+        # init history file
+        history_file = mr.MesaData(os.path.join(self.src,'history.data'))
 
-    def __init__(
-        self,
-        logs_list,
-        logs_origin = 'LOGS/'
-        ):
+        # get the data
+        age = history_file.data('star_age')
+        rel_E_err = history_file.data('rel_error_in_energy_conservation')
+        abs_rel_E_err = history_file.data('rel_cumulative_energy_error')
 
-        # list of paths to the individual LOGS directories
-        self.logs_list = logs_list
+        # plot both quantities on the same axis
+        fig, ax1 = plt.subplots()
 
-        # path to the LOGS parent directory
-        self.logs_origin = logs_origin
+        # plot the relative error
+        ax1.plot(age, rel_E_err, 'b-', **kwargs)
+        ax1.set_xlabel('age [yr]')
+        ax1.set_ylabel('relative error in energy conservation', color='b')
+        ax1.tick_params('y', colors='b')
+        ax1.set_xscale('log')
 
-    def final_quantities(self, quantity):
-        
-        quantity_list = []
+        # plot the relative cumulative error
+        ax2 = ax1.twinx()
+        ax2.plot(age, abs_rel_E_err, 'r-', **kwargs)
+        ax2.set_ylabel('relative cumulative energy error', color='r')
+        ax2.tick_params('y', colors='r')
+        # Add gridlines at specific positions
+        grid_positions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+        for pos in grid_positions:
+            ax2.axhline(y=pos, color='r', linestyle='--', linewidth=0.5, alpha=0.5)
 
-        for l in self.logs_list:
-            history = mr.MesaData(self.logs_origin + l + '/history.data')
-            final_quantity = history.data(quantity)[-1]
-            quantity_list.append(final_quantity)
-            
-        return np.array(quantity_list)
-    
-    def convert_list(self, attribute, conversion):
-        
-        old_values = getattr(self, attribute)
-
-        if type(conversion) == float or type(conversion) == int:
-            values = conversion * old_values
-        
-        elif callable(conversion):
-            values = conversion(old_values)
-
-        setattr(self, attribute, values)
-
-    def final_quantity_plot(
-        self,
-        x,
-        y,
-        *args,
-        **kwargs
-        ):
-
-        xData = self.final_quantities(x)
-        yData = self.final_quantities(y)
-
-        plt.xlabel(x)
-        plt.ylabel(y)
-        
-        plt.plot(xData, yData, *args, **kwargs)
-
-class MesaPlotOption():
-
-    def create_LOGS_list(self):
-        logs_list = [f'{self.logs_origin}/{self.option}/{v}' for v in self.values]
-        return logs_list
-
-    def read_final_quantities(self):
-        
-        qunatity_list = []
-
-        for l in self.logs_list:
-            history = mr.MesaData(l + '/history.data')
-            final_quantity = history.data(self.quantity)[-1]
-            qunatity_list.append(final_quantity)
-            
-        return np.array(qunatity_list)
-
-    def __init__(
-        self,
-        quantity,
-        values,
-        option,
-        logs_origin = 'LOGS'
-        ):
-        
-        super().__init__()
-        
-        # quantity we want to plot
-        self.quantity = quantity
-
-        # option in MESA we investigated
-        self.option = option
-
-        # values we varied
-        self.values = values
-
-        # path to the LOGS parent directory
-        self.logs_origin = logs_origin
-
-        # list of paths to the individual LOGS directories
-        self.logs_list = self.create_LOGS_list()
-
-        # reads list of the final value of self.quantity
-
-        self.final_quantities = self.read_final_quantities()
-
-    
-    def valid_kwargs(self, kwargs, opts):
-        return {key: kwargs[key] for key in kwargs.keys() & opts}
-
-    def pop_unvalid_kwargs(self, kwargs, *invalid_options):
-        opts = set()
-        opts = opts.union(*invalid_options)
-    
-        kwargs_key_set = set(kwargs.keys())
-        return {key: kwargs[key] for key in kwargs_key_set.difference(opts)}
-
-    def convert_list(self, attribute, conversion):
-        
-        old_values = getattr(self, attribute)
-
-        if type(conversion) == float or type(conversion) == int:
-            values = conversion * old_values
-        
-        elif callable(conversion):
-            values = conversion(old_values)
-
-        setattr(self, attribute, values)
-
-    def final_quantity_plot(
-        self,
-        *args,
-        **kwargs
-        ):
-
-        plt.xlabel(self.option)
-        plt.ylabel(self.quantity)
-
-        xData = self.values
-        
-        print(xData)
-        yData = self.final_quantities
-        print(yData)
-
-        plt.plot(xData, yData, *args, **kwargs)
-"""
+        ax2.set_ylim(0, 0.35)

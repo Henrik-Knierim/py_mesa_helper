@@ -417,6 +417,9 @@ class MesaPlot:
         ax3.plot(age, n_model, alpha=0)
         ax3.set_xlabel('model number')
         ax3.tick_params('x', colors='k')
+       
+        print(rel_E_err.min(),rel_E_err.max())
+        ax3.set_ylim(rel_E_err.min()*0.98,rel_E_err.max()*1.02)
 
         # Add gridlines at specific positions
         # grid_positions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]

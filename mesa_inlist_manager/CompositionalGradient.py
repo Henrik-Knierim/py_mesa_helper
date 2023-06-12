@@ -148,7 +148,7 @@ class CompositionalGradient:
         elif (self.method == 'Y_stepwise_with_exponential_transition') or (self.method == 'Z_stepwise_with_exponential_transition'):
             self.abu_profile = exponential
 
-        elif self.method == 'Z_Gaussian':
+        elif (self.method == 'Z_Gaussian') or (self.method == 'Y_Gaussian'):
             self.abu_profile = Gaussian
 
         else:

@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+import glob
 
 with open("README.md", "r") as fh:
 	description = fh.read()
@@ -9,7 +10,7 @@ setup(
 	author="Henrik Knierim",
 	author_email="henrik.knierim@uzh.ch",
 	packages=find_packages(include=['mesa_inlist_manager','mesa_inlist_manager.*']),
-	package_data={'mesa_inlist_manager':["resources/*", "resources/r10108/*"]},
+	package_data={'mesa_inlist_manager':['resources/*', 'resources/r10108/*', 'resources/23.05.1/*']},
 	description="A simple package for changing MESA inlists.",
 	long_description=description,
 	long_description_content_type="text/markdown",

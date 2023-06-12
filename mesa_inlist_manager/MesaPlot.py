@@ -394,6 +394,7 @@ class MesaPlot:
         age = history_file.data('star_age')
         rel_E_err = history_file.data('rel_error_in_energy_conservation')
         abs_rel_E_err = history_file.data('rel_cumulative_energy_error')
+        n_model = history_file.data('model_number')
 
         # plot both quantities on the same axis
         fig, ax1 = plt.subplots()
@@ -410,9 +411,16 @@ class MesaPlot:
         ax2.plot(age, abs_rel_E_err, 'r-', **kwargs)
         ax2.set_ylabel('relative cumulative energy error', color='r')
         ax2.tick_params('y', colors='r')
-        # Add gridlines at specific positions
-        grid_positions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
-        for pos in grid_positions:
-            ax2.axhline(y=pos, color='r', linestyle='--', linewidth=0.5, alpha=0.5)
 
-        ax2.set_ylim(0, 0.35)
+        # create a third axis for n_model on top
+        ax3 = ax1.twiny()
+        ax3.plot(age, n_model, alpha=0)
+        ax3.set_xlabel('model number')
+        ax3.tick_params('x', colors='k')
+
+        # Add gridlines at specific positions
+        # grid_positions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+        # for pos in grid_positions:
+        #     ax2.axhline(y=pos, color='r', linestyle='--', linewidth=0.5, alpha=0.5)
+
+        # ax2.set_ylim(0, 0.35)

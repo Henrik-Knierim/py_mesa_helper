@@ -281,5 +281,19 @@ class CompositionalGradient:
 
         print(f'{relax_composition_filename} was created successfully.')
 
-    
+    @staticmethod
+    def data_string_by_method(method:str, quantity:str = None, **kwargs):
+        if "Z" in method:
+            el = "o16"
+            gradient = "z"
+        elif "Y" in method:
+            el = "he4"
+            gradient = "y"
+
+        if quantity is None:
+            return gradient
+        else:
+            return quantity + "_" + el
+
+            
 

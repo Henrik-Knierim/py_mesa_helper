@@ -8,7 +8,7 @@ class Inlist:
     # keeps track of all instances of Inlist
     instances = []
 
-    def __init__(self, name = None, version = 'r10108'):
+    def __init__(self, name, version = '23.05.1'):
         """Initializes an Inlist object."""
         # add instance to list of instances
         self.instances.append(self)
@@ -19,13 +19,23 @@ class Inlist:
         # version of MESA
         self.version = version
 
-        # save orginal inlist if name is given
-        if name is not None:
-            with open(self.name, 'r') as file:
+        # backup original inlist
+        with open(self.name, 'r') as file:
                 self.original_inlist = file.read()
 
     def __str__(self):
         return f'Inlist({self.name})'
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        
+        # restore original inlist
+        self.restore_inlist()
+
+        # delete instance from list of instances
+        self.instances.remove(self)
 
     ### changin options ###
 
@@ -116,9 +126,8 @@ class Inlist:
         return lines
 
     # create lines with new option
-
     def _create_lines_explicit_section(self, section: str, option: str, value):
-
+        """Creates lines for a new option in an inlist file, where the section is explicitly given."""
         with open(self.name, 'r') as file:
 
             lines = file.readlines()
@@ -168,64 +177,22 @@ class Inlist:
             file.write(self.original_inlist)
         print(f"restored {self} to original version")
 
-    # sets the option and runs the inlist
-    def run_inlist_single_value(self, option: str, value, run_command='./rn'):
-
-        # set the option
-        self.set_option(option, value)
-
-        # run the inlist
-        os.system(run_command)
-
-        print(f"Ran {self.name} with {option} set to {value}.")
-
-        # restore the inlist to its original state
-        self.restore_inlist()
-
-    # same as run_inlist_single_paramter but for a list of values
-    def run_inlist_multiple_value(self, option: str, values: list, run_command='./rn', logs_parent_directory="../LOGS", inlist_logs=None):
-
-        for v in values:
-            log_value = f'{logs_parent_directory}/{option}/{v}'
-
-            # check where to save the file
-            # e.g., you change inlist_core but the LOGS are saved in inlist_evolve
-
-            if inlist_logs != None:
-                Inlist(inlist_logs).set_option('log_directory', log_value)
-            else:
-                self.set_option('log_directory', log_value)
-
-            self.run_inlist_single_value(option, v, run_command)
-
-    def set_logs_path(self, logs_name, logs_parent_directory="LOGS", inlist_logs=None):
-        
-        logs_path = f'{logs_parent_directory}/{logs_name}'
-
-        if inlist_logs==None:
-            self.set_option('log_directory', logs_path)
-
-        else:
-            Inlist(inlist_logs).set_option('log_directory', logs_path)
-
-    def set_logs_path_multiple_values(self, value, value_header_name='value', logs_parent_directory="LOGS"):
-        
-        # write (append) to 'folder_index'
-        path = f'{logs_parent_directory}/folder.index'
-
-        with open(path, 'a') as file:
-            lengt_of_file = os.stat(file.name).st_size 
-            
-            # if file is empty, write header
-            if lengt_of_file == 0:
-                file.write(f"# id\t{value_header_name}\n")
-                lengt_of_file = 1
-
-            file.write(f"{lengt_of_file}\t{value}\n")
-
-    
-
     # common inlist tasks
+
+    def set_logs_path(self, **kwargs)->None:
+        """Sets the path for the logs directory.
+        
+        Parameters:
+            All parameters are inherited from Inlist.create_logs_path_string()
+
+        Returns:
+            None
+
+        Example usage:
+            set_logs_path(logs_style = 'm_core', m_core = 25.0)
+        """
+        logs_path = Inlist.create_logs_path_string(**kwargs)
+        self.set_option('log_directory', logs_path)
 
     def set_initial_mass_in_M_Jup(self, M_p_in_M_J:float) -> None:
         M_p_in_g = M_Jup_in_g*M_p_in_M_J
@@ -257,18 +224,19 @@ class Inlist:
         for instance in cls.instances:
             instance.restore_inlist()
 
+        Inlist.delete_all_instances()
+
     # delete all instances of Inlist
     @classmethod
     def delete_all_instances(cls):
         """Deletes all instances of Inlist."""
-        for instance in cls.instances:
-            del instance
+        cls.instances = []
 
-    # delete latest instance of Inlist
     @classmethod
     def delete_latest_instance(cls):
-        """Deletes the latest instance of Inlist."""
-        del cls.instances[-1]
+        """Deletes the last instance of Inlist."""
+        if cls.instances:
+            cls.instances.pop()
 
     @staticmethod
     def fortran_format(x):
@@ -317,6 +285,116 @@ class Inlist:
                 else:
                     return x
                 
+    @staticmethod
+    def create_logs_path_string(logs_src: str = "LOGS", logs_style = None, **kwargs)->None:
+        """
+        Returns the path to the logs directory.
+
+        Parameters:
+            logs_src (str): The parent directory for logs. Default is "LOGS".
+            logs_style: Style of logs. Can be None, str, or list.
+                - If None, the 'logs_name' keyword argument must be provided.
+                - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided.
+                - If 'logs_style' is str, the 'logs_style' keyword argument must be provided,
+                and its value will be appended to the 'logs_name' in the format 'logs_style_logs_value'.
+                - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings,
+                and the values corresponding to each style will be appended to the 'logs_name' in the format
+                'style1_value1_style2_value2_...'.
+
+            **kwargs: Additional keyword arguments that may be required based on the 'logs_style' value.
+
+        Returns:
+            logs_path (str): The path to the logs directory.
+
+        Raises:
+            ValueError: If the required keyword arguments are not provided or if 'logs_style' is an invalid value.
+
+        Usage:
+            This method generates a path to the logs directory based on the provided 'logs_style' and additional
+            keyword arguments. It supports different scenarios:
+
+            - If 'logs_style' is None, the 'logs_name' keyword argument must be provided. The 'logs_name' will be used
+            as the name of the logs directory.
+
+            - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided. The method
+            will read the value of the specified 'option' from the given MESA inlist file and append it as a new
+            entry to the 'folder.index' file in the logs directory. The 'logs_name' will be set to the index of
+            the appended entry.
+
+            - If 'logs_style' is str, the 'logs_style' keyword argument must be provided. The method will look for
+            another keyword argument with the same name as the 'logs_style' value. The 'logs_value' will be appended
+            to the 'logs_name' in the format 'logs_style_logs_value'.
+
+            - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings. The
+            method will look for keyword arguments corresponding to each style in the list. The values will be appended
+            to the 'logs_name' in the format 'style1_value1_style2_value2_...'.
+
+            If any of the required keyword arguments are missing or if 'logs_style' has an invalid value, a ValueError
+            will be raised.
+        """
+
+        if logs_style is None:
+            # get logs_name
+            logs_name = kwargs.get('logs_name', None)
+            if logs_name is None:
+                raise ValueError("logs_name must be given if logs_style is None.")
+        
+        elif logs_style == 'id':
+
+            # get inlist and option
+            inlist_name = kwargs.get('inlist_name', None)
+            option = kwargs.get('option', None)
+
+            # tests
+            if option is None:
+                raise ValueError("option must be given if logs_style is 'id'.")
+            if inlist_name is None:
+                raise ValueError("inlist_name must be given if logs_style is 'id'.")
+            
+            with Inlist(inlist_name) as inlist:
+                value = inlist.read_option(option)
+                
+            # write (append) to 'folder_index'
+            path = os.path.join(logs_src, 'folder.index')
+
+            with open(path, 'a') as file:
+                lengt_of_file = os.stat(file.name).st_size 
+                
+                # if file is empty, write header
+                if lengt_of_file == 0:
+                    file.write(f"# id\t{option}\n")
+                    lengt_of_file = 1
+
+                file.write(f"{lengt_of_file}\t{value}\n")
+
+            logs_name = f'{lengt_of_file}'
+
+        elif isinstance(logs_style, str):
+            # get logs_name
+            logs_value = kwargs.get(logs_style, None)
+            if logs_value is None:
+                raise ValueError(f"{logs_style} must be given if logs_style is {logs_style}")
+            
+            logs_name = f'{logs_style}_{kwargs.get(logs_style, None):.2f}'
+        
+        elif isinstance(logs_style, list):
+            logs_name = ''
+            for style in logs_style:
+                logs_value = kwargs.get(style, None)
+                if logs_value is None:
+                    raise ValueError(f"{style} must be given if logs_style is {logs_style}")
+                
+                logs_name += f'{style}_{logs_value:.2f}_'
+            
+            logs_name = logs_name[:-1]
+            
+        else:
+            raise ValueError("logs_style must be None, str or list")
+        
+        logs_path = os.path.join(logs_src, logs_name)
+
+        return logs_path
+    
     @staticmethod
     def convergence_tolerance_options(convergence_tolerances):
         """Returns common convergence tolerances."""

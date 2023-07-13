@@ -7,7 +7,8 @@ import numpy as np
 import os
 from mesa_inlist_manager.Analysis import Analysis, MultipleSimulationAnalysis
 from mesa_inlist_manager.astrophys import Z_Sol, M_Jup_in_Sol, R_Jup_in_Sol
-from mesa_inlist_manager.MesaRun import MesaRun
+from mesa_inlist_manager.Inlist import Inlist
+from mesa_inlist_manager.CompositionalGradient import CompositionalGradient
 
 class MesaPlot:
 
@@ -24,14 +25,20 @@ class MesaPlot:
         """Plots the gradient of the metallicity profile as a function of logP."""
 
         # init log object
-        log = mr.MesaLogDir(self.src)
+        logs = mr.MesaLogDir(self.src)
         
         # get the profile
-        profile = log.profile_data(**kwargs)
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in logs.profile_data.__code__.co_varnames}
+
+        profile = logs.profile_data(**profile_data_kwargs)
         
         # get the pressure and metallicity profile
         logP = profile.logP
-        z = profile.z
+        gradient = kwargs.get('gradient', 'Z')
+        if gradient == 'Z':
+            y_coord = profile.z
+        elif gradient == 'Y':
+            y_coord = profile.y
 
         # get the derrivative of the metallicity profile
         dlogZ_dlogP = Analysis(self.src).dlogZ_dlogP(**kwargs)
@@ -44,7 +51,7 @@ class MesaPlot:
         ax.tick_params('y', colors='b')
     
         # create the second plot
-        ax2.plot(logP, z, 'r-')
+        ax2.plot(logP, y_coord, 'r-')
         ax2.set_ylabel('Z', color = 'r')
         ax2.tick_params('y', colors='r')
 
@@ -52,9 +59,10 @@ class MesaPlot:
         """Plots the gradient of the metallicity profile as a function of logP."""
 
         # init log object
-        logs_path = MesaRun(self.src).create_logs_path_string(M_p, s0)
+        logs_path = Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0'])
         logs = mr.MesaLogDir(logs_path)
-        profile = logs.profile_data(**kwargs)
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in logs.profile_data.__code__.co_varnames}
+        profile = logs.profile_data(**profile_data_kwargs)
         
         # get the pressure and mean molecular weight profile
         logP = profile.logP
@@ -84,11 +92,16 @@ class MesaPlot:
         log = mr.MesaLogDir(self.src)
         
         # get the profile
-        profile = log.profile_data(**kwargs)
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in log.profile_data.__code__.co_varnames}
+        profile = log.profile_data(**profile_data_kwargs)
         
         # get the pressure and metallicity profile
         logP = profile.logP
-        z = profile.z
+        gradient = kwargs.get('gradient', 'Z')
+        if gradient == 'Z':
+            y_coord = profile.z
+        elif gradient == 'Y':
+            y_coord = profile.y
 
         # create the first plot
         ax.hist(logP, bins = 100, color = 'b')
@@ -97,21 +110,21 @@ class MesaPlot:
         ax.tick_params('y', colors='b')
 
         # create the second plot
-        ax2.plot(logP, z, 'r-')
+        ax2.plot(logP, y_coord, 'r-')
         ax2.set_ylabel('Z', color = 'r')
         ax2.tick_params('y', colors = 'r')
     
-    def mesh_overview(self)-> None:
+    def mesh_overview(self, **kwargs)-> None:
         """Plots a grid of the relevant mesh metrics for the start and the end of the simulation."""
 
         # Create a 2x2 grid of subplots
         fig, axs = plt.subplots(2, 2, figsize = (9, 6))
 
         # Plot data in each subplot
-        self._dlogZ_dlogP_two_axes_plot(axs[0, 0], axs[0, 0].twinx(), profile_number = 1)
-        self._mesh_distribution_plot(axs[0, 1], axs[0, 1].twinx(), profile_number = 1)
-        self._dlogZ_dlogP_two_axes_plot(axs[1, 0], axs[1, 0].twinx())
-        self._mesh_distribution_plot(axs[1, 1], axs[1, 1].twinx())
+        self._dlogZ_dlogP_two_axes_plot(axs[0, 0], axs[0, 0].twinx(), profile_number = 1, **kwargs)
+        self._mesh_distribution_plot(axs[0, 1], axs[0, 1].twinx(), profile_number = 1, **kwargs)
+        self._dlogZ_dlogP_two_axes_plot(axs[1, 0], axs[1, 0].twinx(), **kwargs)
+        self._mesh_distribution_plot(axs[1, 1], axs[1, 1].twinx(), **kwargs)
 
         # Increase the distance between columns
         #plt.subplots_adjust(hspace=0.3, wspace=0.3)
@@ -138,6 +151,8 @@ class MesaPlot:
 
             # style the plot
             label = kwargs.get("label", f'{s0:.1f} kb/mu')
+            if 'label' in kwargs:
+                del kwargs['label']
 
             # plot the heterogeneity
             if model_number == 1:
@@ -149,11 +164,11 @@ class MesaPlot:
         plt.ylabel('heterogeneity')
         plt.legend()
 
-    def heterogeneity_evolution_plot(self)-> None:
+    def heterogeneity_evolution_plot(self, **kwargs)-> None:
         """Plots the heterogeneity evolution of a simulation."""
 
         # init history file
-        t, h = Analysis(self.src).heterogeneity_evolution()
+        t, h = Analysis(self.src).heterogeneity_evolution(**kwargs)
 
         # get the energy error
         history_file = mr.MesaData(os.path.join(self.src,'history.data'))
@@ -181,6 +196,9 @@ class MesaPlot:
         grid_positions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
         for pos in grid_positions:
             ax2.axhline(y=pos, color='r', linestyle='--', linewidth=0.5, alpha=0.5)
+        
+        for pos in [1e5, 1e6, 1e7, 2e7, 5e7, 8e7, 1e8, 1e9]:
+            ax1.axvline(x=pos, color='k', linestyle='--', linewidth=0.5, alpha=0.5)
 
         ax2.set_ylim(0, 0.35)
 
@@ -201,18 +219,18 @@ class MesaPlot:
         plt.ylabel('relative atmospheric metallicity')
         plt.legend()
 
-    def metallicity_profile_plot(self, M_p, s0, showFirstProfileQ = True)->None:
+    def metallicity_profile_plot(self, M_p, s0, **kwargs)->None:
         """Plots the metallicity profile at the beginning and the end of the simulation."""
 
         # create the plot
         fig, ax = plt.subplots()
-        self._metallicity_profile_plot_axes_allocation(ax, M_p, s0, showFirstProfileQ)
+        self._metallicity_profile_plot_axes_allocation(ax, M_p, s0, **kwargs)
 
 
-    def _metallicity_profile_plot_axes_allocation(self, ax, M_p, s0, showFirstProfileQ = True)-> None:
-        """Populates the input ax with a metallicity profile plot."""
+    def _metallicity_profile_plot_axes_allocation(self, ax, M_p, s0, showFirstProfileQ = True, **kwargs)-> None:
+        """Populates the input ax with a metallicity profile plot. If the gradient is in Y, a Y profile is shown instead."""
 
-        logs_path = MesaRun(self.src).create_logs_path_string(M_p, s0)
+        logs_path = kwargs.get("logs_path", Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0']))
         logs = mr.MesaLogDir(logs_path)
 
         if showFirstProfileQ:
@@ -225,10 +243,14 @@ class MesaPlot:
         m_final = final_profile.mass
         
         # get planetary data
-        Z_final = final_profile.z
+        # note: if the gradient is in Y, Z_final is actually Y_final and Z_avg is actually Y_avg
+        gradient = CompositionalGradient.data_string_by_method(kwargs.get("method"))
+        Z_final = final_profile.data(gradient)
         age = logs.history.data('star_age')[-1]/1e9
         R_final = logs.history.radius[-1]/R_Jup_in_Sol
-        Z_avg = logs.history.data('average_o16')[-1]
+
+        history_string = CompositionalGradient.data_string_by_method(kwargs.get("method"),'average')
+        Z_avg = logs.history.data(history_string)[-1]
     
         ax.plot(m_final/M_Jup_in_Sol, Z_final, label = f'{age:.2f}')
         
@@ -265,7 +287,7 @@ class MesaPlot:
 
         # set the logs path
         # if not defined, use the default logs path
-        kwargs.get('logs_path', MesaRun(self.src).create_logs_path_string(M_p, s0))
+        kwargs['logs_path'] = kwargs.get('logs_path', Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0']))
         logs = mr.MesaLogDir(kwargs['logs_path'])
         
 
@@ -306,7 +328,7 @@ class MesaPlot:
         
         # set the logs path
         # if not defined, use the default logs path
-        kwargs.get('logs_path', MesaRun(self.src).create_logs_path_string(M_p, s0))
+        kwargs['logs_path'] = kwargs.get('logs_path', Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0']))
         logs = mr.MesaLogDir(kwargs['logs_path'])
 
         # get the data
@@ -354,7 +376,7 @@ class MesaPlot:
     def mean_molecular_weight_plot(self, M_p, s0, **kwargs)->None:
         """Plots the mean molecular weight as a function of mass coordinate."""
 
-        logs_path = MesaRun(self.src).create_logs_path_string(M_p, s0)
+        logs_path = Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0'])
         logs = mr.MesaLogDir(logs_path)
 
         # get the data
@@ -412,14 +434,8 @@ class MesaPlot:
         ax2.set_ylabel('relative cumulative energy error', color='r')
         ax2.tick_params('y', colors='r')
 
-        # create a third axis for n_model on top
-        ax3 = ax1.twiny()
-        ax3.plot(age, n_model, alpha=0)
-        ax3.set_xlabel('model number')
-        ax3.tick_params('x', colors='k')
-       
-        print(rel_E_err.min(),rel_E_err.max())
-        ax3.set_ylim(rel_E_err.min()*0.98,rel_E_err.max()*1.02)
+        ax1.text(0.02, 0.95, f"Model Number: {n_model[-1]}", transform=plt.gca().transAxes,
+         fontsize=12, fontweight='bold', verticalalignment='top')
 
         # Add gridlines at specific positions
         # grid_positions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]

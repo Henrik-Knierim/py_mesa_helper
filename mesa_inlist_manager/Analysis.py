@@ -4,7 +4,7 @@ import mesa_reader as mr
 import os
 import glob
 from tabulate import tabulate
-from mesa_inlist_manager.astrophys import M_Earth_in_g, M_Earth_in_Sol
+from mesa_inlist_manager.astrophys import M_Earth_in_g, M_Earth_in_Sol, M_Jup_in_Sol
 from mesa_inlist_manager.CompositionalGradient import CompositionalGradient
 
 
@@ -13,32 +13,26 @@ class Analysis:
         # location of the LOGS directory
         self.src = src
 
-    def heterogeneity(self, model_number=-1, **kwargs):
-        """Gives the deviation of the metallicity from a homogeneous profile."""
+    def heterogeneity(self, **kwargs):
+        """Gives the deviation of the metallicity from a homogeneous profile. If the gradient is in Y, the deviation is calculated in Y."""
 
         # init log object
         log = mr.MesaLogDir(self.src)
         # gets the last profile
-        profile = log.profile_data(model_number=model_number)
-
-        # get average metallicty
-        if model_number == -1:
-            Z_avg = log.history.data("average_o16")[-1]
-        else:
-            Z_avg = log.history.data_at_model_number(
-                "average_o16", m_num=model_number
-            )  # check definition
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in log.profile_data.__code__.co_varnames}
+        profile = log.profile_data(**profile_data_kwargs)
 
         # get the metallicity profile
         dm = profile.dm
-        Z = profile.z
+        Z = profile.data(CompositionalGradient.data_string_by_method(kwargs.get("method")))
+        Z_avg = np.average(Z, weights=dm)
 
         # calculate the deviation
         variance = np.sum(np.power(Z - Z_avg, 2) * dm) / np.sum(dm)
 
         return np.sqrt(variance)
 
-    def heterogeneity_evolution(self):
+    def heterogeneity_evolution(self, **kwargs):
         """Gives the evolution of the heterogeneity."""
 
         # init log object
@@ -57,14 +51,14 @@ class Analysis:
         # get the heterogeneity
         heterogeneity = np.array(
             [
-                self.heterogeneity(model_number=model_number)
+                self.heterogeneity(model_number=model_number, **kwargs)
                 for model_number in model_numbers
             ]
         )
 
         return t, heterogeneity
 
-    def relative_atmospheric_metallicity(self):
+    def relative_atmospheric_metallicity(self,**kwargs):
         """Gives the ratio between the atmopsheric metallicity (Z_atm) and the average metallicity (Z_avg)."""
 
         # init log object
@@ -74,7 +68,8 @@ class Analysis:
         profile = log.profile_data()
 
         # get the average metallicity
-        Z_avg = log.history.data("average_o16")[-1]
+        history_string = CompositionalGradient.data_string_by_method(kwargs.get("method", "Z"), 'average')
+        Z_avg = log.history.data("history_string")[-1]
 
         # select the metallicty where convection starts
         Z_atm = profile.z[profile.sch_stable == 0][0]
@@ -83,18 +78,22 @@ class Analysis:
         return Z_atm / Z_avg
 
     def dlogZ_dlogP(self, **kwargs):
-        """Gives the gradient of the metallicity profile."""
+        """Gives the gradient of the metallicity profile. If the gradient is in Y, the gradient is calculated in logY."""
 
         # init log object
         log = mr.MesaLogDir(self.src)
 
         # get profile
-        profile = log.profile_data(**kwargs)
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in log.profile_data.__code__.co_varnames}
+
+        profile = log.profile_data(**profile_data_kwargs)
 
         # get the pressure and metallicity profiles
         logP = profile.logP
-        Z = profile.z
-        logZ = np.log10(Z)
+        y_coord = profile.data(CompositionalGradient.data_string_by_method(kwargs.get("method", "Z")))
+
+        # careful: might be logY if gradient is in Y
+        logZ = np.log10(y_coord)
 
         # calculate the gradient
         return np.gradient(logZ, logP)
@@ -120,17 +119,19 @@ class Analysis:
         """Returns the error in the heavy mass of the planet"""
 
         # init log object
-        from mesa_inlist_manager.MesaRun import MesaRun
+        from mesa_inlist_manager.Inlist import Inlist
 
-        path = MesaRun(self.src).create_logs_path_string(M_p, s0)
+        path = Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0'])
         log = mr.MesaLogDir(path)
 
         # get the heavy mass of the planet theoretically
         comp_grad = CompositionalGradient(M_p=M_p, **kwargs)
         M_z_in = comp_grad.M_z_tot(**kwargs)
 
+        history_string = CompositionalGradient.data_string_by_method(kwargs.get("method"), 'total_mass')
         # get the heavy mass of the planet at the end of the simulation
-        M_z_out = log.history.data("total_mass_o16")[-1] / M_Earth_in_Sol
+        
+        M_z_out = log.history.data(history_string)[-1] / M_Earth_in_Sol
 
         return abs(1 - M_z_out / M_z_in)
 
@@ -148,6 +149,19 @@ class Analysis:
 
         # get the data for the i-th simulation
         data = get_data(history_file, data_name)
+
+        return data
+    
+    def get_profile_data(self, data_name : str, **kwargs) -> np.ndarray:
+        """Returns the data from the profile corresponding the profile number."""
+
+        # init log object
+        log = mr.MesaLogDir(log_path=self.src)
+
+        # get profile
+        profile = log.profile_data(**kwargs)
+        
+        data = profile.data(data_name)
 
         return data
 
@@ -168,15 +182,34 @@ class Analysis:
 class MultipleSimulationAnalysis:
     """Class for analyzing multiple simulations."""
 
-    def __init__(self, src="LOGS", **kwargs) -> None:
+    def __init__(self, src="LOGS", free_params = ['M_p','s_0'], **kwargs) -> None:
         # parent directory of the LOGS directories
         self.src = src
 
         # get the names of the LOGS directories
-        self._select_simulations(**kwargs)
+        if free_params == ['M_p','s_0']:
+            self._select_simulations(**kwargs)
+
+        elif free_params == ['m_core']:
+            self._select_simulations_custom_pattern(
+                pattern = "m_core_*",
+                sort_key = lambda x: float(x.split("_")[-1])
+                )
+            
+            self.core_mass = np.array([float(s.split("_")[-1]) for s in self.simulations])
+            
 
         # get the planetary masses and initial entropies
-        self._get_planetary_mass_and_intial_entropy()
+        self._get_planetary_mass_and_entropy()
+
+    def _select_simulations_custom_pattern(self, pattern, sort_key=None):
+        """Select subset of simulations from the parent directory."""
+
+        # get the names of the LOGS directories
+        self.simulations = glob.glob(self.src + "/" + pattern)
+        
+        if sort_key != None:
+            self.simulations.sort(key=sort_key)
 
     def _select_simulations(self, M_p=None, s0=None, **kwargs):
         """Select subset of simulations from the parent directory."""
@@ -187,7 +220,6 @@ class MultipleSimulationAnalysis:
         elif M_p == None:
             self.simulations = glob.glob(self.src + "/" + "M_p_*_s0_{:.1f}".format(s0))
         elif s0 == None:
-            print(self.src + "/" + "M_p_{}_s0_*".format(M_p))
             self.simulations = glob.glob(self.src + "/" + "M_p_{:.2f}_s0_*".format(M_p))
         else:
             self.simulations = glob.glob(
@@ -197,17 +229,25 @@ class MultipleSimulationAnalysis:
         # sort the simulations by mass
         self.simulations.sort(key=lambda x: float(x.split("_")[-3]))
 
-    def _get_planetary_mass_and_intial_entropy(self):
-        """Gives the masses of the planets."""
+    def _get_planetary_mass_and_entropy(self):
+        """Gives the masses and entropies of the planets."""
 
-        self.planetary_mass = np.zeros(len(self.simulations))
-        self.initial_entropy = np.zeros(len(self.simulations))
+        # masses
+        self.planetary_mass = self.get_history_data("star_mass")/M_Jup_in_Sol
 
-        for i, simulation in enumerate(self.simulations):
-            parts = simulation.split("_")
-            self.planetary_mass[i] = float(parts[-3])
-            self.initial_entropy[i] = float(parts[-1])
+        # entropies
+        self.total_entropy = self.get_profile_data("entropy", metric=np.sum)
+        self.center_entropy = self.get_profile_data("entropy", metric=lambda l: l[-1])
 
+        # check if the initial entropy is in the simulation name
+        if 's0' in self.simulations[0].split('/')[-1]:
+            self.initil_entropy = np.zeros(len(self.simulations))
+
+            for i, simulation in enumerate(self.simulations):
+                parts = simulation.split("_")
+                self.initial_entropy[i] = float(parts[-1])
+
+                    
     def get_history_data(self, data_name, model_number=-1):
         """Returns the n-th entry of the history data for each simulation."""
 
@@ -220,6 +260,21 @@ class MultipleSimulationAnalysis:
             data[i] = analysis.get_history_data(data_name, model_number=model_number)
 
         return data
+    
+    def get_profile_data(self, data_name : str, metric, **kwargs) -> np.ndarray:
+        """Gives the profile entry of data_name that fulfills the metric for each simulation."""
+            
+        analysis = Analysis()
+        
+        # init data that will be returned
+        data = []
+        for simulation in self.simulations:
+            analysis.src = simulation
+
+            # get the data and apply the metric
+            data.append(metric(analysis.get_profile_data(data_name, **kwargs)))
+    
+        return np.stack(data)
 
     def heterogeneity(self, **kwargs):
         """Gives the deviation of the metallicity from a homogeneous profile."""

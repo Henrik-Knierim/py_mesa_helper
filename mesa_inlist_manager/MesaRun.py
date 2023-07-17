@@ -1,6 +1,7 @@
 import os
 import mesa_reader as mr
 from mesa_inlist_manager.Inlist import Inlist
+from mesa_inlist_manager.Analysis import Analysis, MultipleSimulationAnalysis
 from mesa_inlist_manager.astrophys import specific_entropy
 
 class MesaRun:
@@ -136,20 +137,32 @@ class MesaRun:
             print("No failed_simulations.txt found.")
 
     # convergence tests
-    def ageQ(self, M_p, s0, inlist_name : str = 'inlist_evolve', age_tolerance = 1e-3)->bool:
+    def ageQ(self, age_tolerance = 1e-3, **kwargs)->bool:
         """Returns True if the simulation has reached the desired age."""
         
-        # get the age of the model
-        logs_path = Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0'])
-        history = mr.MesaData(logs_path+'/history.data')
-        age = history.data('star_age')[-1]
+        # get the age of the model(s)
+        suiteQ = kwargs.get('suiteQ', False)
+        if suiteQ:
+            age = MultipleSimulationAnalysis(src=self.src, **kwargs).get_history_data('star_age')
+        else:
+            age  = Analysis(src=self.src).get_history_data('star_age')
+        
+        # test if age is within tolerance
+        # if final_age_method is not specified, use inlist
+        method = kwargs.get('final_age_method', 'inlist')
 
-        t_final = Inlist(inlist_name).read_option("max_age")
+        if method == 'inlist':
+            inlist_name = kwargs.get('inlist_name', 'inlist_evolve')
+            with Inlist(inlist_name) as inlist:
+                t_final = inlist.read_option("max_age")
 
-        # release Inlist object
-        Inlist.delete_latest_instance()
-
-        return t_final*(1-age_tolerance) < age < t_final*(1+age_tolerance)
+        # if final_age is specified, use that
+        elif method == 'input':
+            # if final_age is not specified, return False
+            t_final = kwargs.get('final_age', 0)
+        
+        test = (t_final*(1-age_tolerance) < age) &  (age < t_final*(1+age_tolerance))
+        return test
     
     def heavy_mass_convergedQ(self, M_p, s0, heavy_mass_tol = 1e-2, **kwargs)->bool:
         """Checks if the heavy mass of the planet has converged"""

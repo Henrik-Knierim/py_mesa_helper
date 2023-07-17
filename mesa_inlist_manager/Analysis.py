@@ -41,18 +41,24 @@ class Analysis:
         model_numbers = log.model_numbers
         model_numbers = np.trim_zeros(model_numbers, "f")
 
-        t = np.array(
-            [
-                log.history.data_at_model_number("star_age", m_num=model_number)
-                for model_number in model_numbers
-            ]
-        )
+        t = []
+        model_numbers_filtered = []
 
-        # get the heterogeneity
+        for model_number in model_numbers:
+            try:
+                data = log.history.data_at_model_number("star_age", m_num=model_number)
+                t.append(data)
+                model_numbers_filtered.append(model_number)
+            except Exception:
+                pass
+
+        t = np.array(t)
+
+        # get the heterogeneity for the filtered model numbers
         heterogeneity = np.array(
             [
                 self.heterogeneity(model_number=model_number, **kwargs)
-                for model_number in model_numbers
+                for model_number in model_numbers_filtered
             ]
         )
 

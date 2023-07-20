@@ -1,5 +1,6 @@
 import numpy as np
-from scipy.interpolate import griddata, LinearNDInterpolator
+from scipy.interpolate import LinearNDInterpolator
+from scipy import integrate
 from os import path
 
 resources_dir = path.join(path.dirname(__file__), 'resources')
@@ -10,6 +11,7 @@ sigma_SB = 5.670374e-5  # erg cm^-2 K^-4
 NA = 6.02214e23         # per mol
 kB = 1.38065e-16        # erg/K
 # Sun
+R_Sol_in_cm = 6.957e10
 M_Sol_in_g = 1.988435e33
 M_Sol_in_Earth = 3.329e-5
 Z_Sol = 0.0174064       # proto-solar values accoding to Lodders21
@@ -31,6 +33,34 @@ M_Earth_in_g = 5.97e27
 Teff_Jup = 124  # K
 
 # <<< constants <<<
+
+# >>> math functions >>>
+def mean_functional_residual_from_list(f: list, f0: list, dx: list) -> float:
+ 
+        # calculate the residual
+        variance = np.sum(np.power(f - f0, 2) * dx) / np.sum(dx)
+
+        return np.sqrt(variance)
+
+def mean_functional_residual(f, f0, x_min: float, x_max: float):
+
+    df2 = lambda x: np.power(f(x) - f0(x), 2)
+    
+    h2 = integrate.quad(df2, x_min, x_max)[0]/(x_max - x_min)
+
+    return np.sqrt(h2)
+
+def heterogeneity(f, x_min: float, x_max: float):
+    
+        f_mean = integrate.quad(f, x_min, x_max)[0]/(x_max - x_min)
+    
+        df2 = lambda x: np.power(f(x) - f_mean, 2)
+        
+        h2 = integrate.quad(df2, x_min, x_max)[0]/(x_max - x_min)
+    
+        return np.sqrt(h2)
+
+# <<< math functions <<<
 
 # >>> astro functions >>>
 

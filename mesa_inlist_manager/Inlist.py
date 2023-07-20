@@ -331,6 +331,27 @@ class Inlist:
 
             If any of the required keyword arguments are missing or if 'logs_style' has an invalid value, a ValueError
             will be raised.
+
+        Examples:
+            >>> # Example 1: logs_style is None
+            >>> logs_path = Inlist.create_logs_path_string(logs_style=None, logs_name='test')
+            >>> print(logs_path)
+            LOGS/test
+
+            >>> # Example 2: logs_style is 'id'
+            >>> logs_path = Inlist.create_logs_path_string(logs_style='id', inlist_name='inlist', option='initial_mass')
+            >>> print(logs_path)
+            LOGS/1
+
+            >>> # Example 3: logs_style is str
+            >>> logs_path = Inlist.create_logs_path_string(logs_style='initial_mass', initial_mass=1.0)
+            >>> print(logs_path)
+            LOGS/initial_mass_1.0
+
+            >>> # Example 4: logs_style is list
+            >>> logs_path = Inlist.create_logs_path_string(logs_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
+            >>> print(logs_path)
+            LOGS/initial_mass_1.0_metallicity_0.02
         """
 
         if logs_style is None:

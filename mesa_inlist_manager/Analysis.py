@@ -247,7 +247,7 @@ class MultipleSimulationAnalysis:
 
         # check if the initial entropy is in the simulation name
         if 's0' in self.simulations[0].split('/')[-1]:
-            self.initil_entropy = np.zeros(len(self.simulations))
+            self.initial_entropy = np.zeros(len(self.simulations))
 
             for i, simulation in enumerate(self.simulations):
                 parts = simulation.split("_")

@@ -14,6 +14,7 @@ kB = 1.38065e-16        # erg/K
 R_Sol_in_cm = 6.957e10
 M_Sol_in_g = 1.988435e33
 M_Sol_in_Earth = 3.329e-5
+L_Sol_in_erg_s = 3.828e33
 Z_Sol = 0.0174064       # proto-solar values accoding to Lodders21
 Y_Sol = 0.276522        # proto-solar values according to Lodders21
 X_Sol = 1 - Y_Sol - Z_Sol

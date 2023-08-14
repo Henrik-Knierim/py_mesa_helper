@@ -151,6 +151,10 @@ class CompositionalGradient:
         elif (self.method == 'Z_Gaussian') or (self.method == 'Y_Gaussian'):
             self.abu_profile = Gaussian
 
+        elif (self.method == 'Z_custom') or (self.method == 'Y_custom'):
+            # you can pass a custom function as abu_profile
+            self.abu_profile = kwargs['abu_profile']
+
         else:
             raise Exception(f"method={self.method} not supported.")
         

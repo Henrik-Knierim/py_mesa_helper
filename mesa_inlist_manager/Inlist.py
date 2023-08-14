@@ -172,10 +172,19 @@ class Inlist:
 
         print(f"Set {option} to {Inlist.fortran_format(value)}")
 
-    def restore_inlist(self):
+    def restore_inlist(self)->None:
+        """Restores the inlist to its original version."""
         with open(self.name, 'w') as file:
             file.write(self.original_inlist)
         print(f"restored {self} to original version")
+
+    def save_inlist(self)->None:
+        """Copies the inlist into the LOGS directory of the run."""
+        try:
+            os.system(f"cp {self.name} ./{self.read_option('log_directory')}/.")
+            print(f"saved {self.name} to {self.read_option('log_directory')} directory")
+        except:
+            raise ValueError("cp command failed. Check if the inlist has a log_directory option.")
 
     # common inlist tasks
 
@@ -441,39 +450,35 @@ class Inlist:
 
         return [tol_correction_norm, tol_max_correction]
     
-    
+    @staticmethod
+    def set_multiple_options(options_dict : dict)->None:
+        """Sets options in multiple inlist files.
+        
+        Initializes inlist objects and sets the options accordingly.
 
-# class MultipleInlists:
+        Parameters
+        ----------
+        options : dict
+            dictionary with options of the format {'inlist_name': {'option_name': 'option_value', ...}, ...}
+        
+        Returns
+        -------
+        None
 
-#     def __init__(self) -> None:
-#         pass
+        Notes
+        -----
+        This function does not restore the inlist files to their original versions. Use Inlist.restore_all_instances() for that.
 
-#     def run_multiple_inlists(self, inlist_dict: dict, run_command='./rn'):
+        Examples
+        --------
+        >>> Inlist.set_multiple_options({'inlist_pgstar': {'pgstar_flag': True}, 'inlist_evolve': {'log_directory': 'LOGS/test'}})
+        """
 
-#         # set value to inlist option
-#         for inlist in inlist_dict.keys():
-#             Inlist(inlist).set_option(
-#                 inlist_dict[inlist]['section'],
-#                 inlist_dict[inlist]['option'],
-#                 inlist_dict[inlist]['value']
-#             )
+        for inlist_name, options in options_dict.items():
+            
+            # initialize inlist
+            inlist = Inlist(inlist_name)
 
-#         # run option
-#         os.system(run_command)
-
-#         self.restore_inlist()
-
-#     # def __init__(self, inlist_dict):
-
-#     #     self.inlist_dict = inlist_dict
-#     #     # create a dictionary using the Inlist class
-#     #     for key, value in self.inlist_dict.items():
-#     #         inlist_dict[key] = Inlist(value)
-
-# def run_inlists(set_function, set_function_input, values, run_command='./rn'):
-
-#     for v in values:
-#         set_function(set_function_input, v)
-#         os.system(run_command)
-
-
+            # go through all options and set them
+            for option_name, option_value in options.items():
+                inlist.set_option(option_name, option_value)

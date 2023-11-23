@@ -3,79 +3,18 @@ import mesa_reader as mr
 from mesa_inlist_manager.Inlist import Inlist
 from mesa_inlist_manager.Analysis import Analysis, MultipleSimulationAnalysis
 from mesa_inlist_manager.astrophys import specific_entropy
+from typing import Callable
+import numpy as np
 
 class MesaRun:
     """Utilities for MESA simulations."""
-
-    MIXING_PARAMTERS = [
-            'mix_factor',
-            'alpha_semiconvection',
-            'thermohaline_coeff',
-            'num_cells_for_smooth_gradL_composition_term',
-            'conv_dP_term_factor',
-            'overshoot_alpha', # only used when > 0.  if <= 0, then use `mixing_length_alpha` instead.
-            'smooth_convective_bdy',
-            # exp overshooting
-            'overshoot_f_above_nonburn_core',
-            'overshoot_f0_above_nonburn_core',
-            'overshoot_f_above_nonburn_shell',    # 1d-2
-            'overshoot_f0_above_nonburn_shell',   # 2d-3
-            'overshoot_f_below_nonburn_shell',
-            'overshoot_f0_below_nonburn_shell',
-            'column_depth_for_irradiation',
-            'irradiation_flux',
-            'max_years_for_timestep',
-            'use_Ledoux_criterion',
-            'mesh_delta_coeff',
-            'initial_age',
-            'kappa_file_prefix',
-            'kappa_lowT_prefix',
-            'use_lnS_for_eps_grav',
-            'include_dmu_dt_in_eps_grav',
-            'use_dEdRho_form_for_eps_grav',
-            'eosDT_use_linear_interp_for_X'
-        ]
-    
-    EVOLUTION_OPTIONS = [
-        'tol_correction_norm',
-        'tol_max_correction',
-        'max_years_for_timestep',
-        'mesh_delta_coeff',
-        'mesh_logX_species(1)',
-        'mesh_logX_min_for_extra(1)',
-        'mesh_dlogX_dlogP_extra(1)',
-        'mesh_dlogX_dlogP_full_on(1)',
-        'mesh_dlogX_dlogP_full_off(1)',
-        'column_depth_for_irradiation',
-        'irradiation_flux'
-        ]
 
     def __init__(self, src = 'LOGS') -> None:
         
         self.src = src
 
-    def read_mixing_params(self, inlist_name : str = 'inlist_evolve')->None:
-        """Sets mixing parameters in inlists"""
-
-        # read in mixing parameters from inlist and store in dict
-        self.mixing_params = {}
-        for option in self.MIXING_PARAMTERS:
-            value = Inlist(inlist_name).read_option(option)
-            self.mixing_params[option] = value
-            # release Inlist object
-            Inlist.delete_latest_instance()
-    
-    def export_mixing_parameters(self):
-        """Writes mixing parameters to file in logs parent directory"""
-        
-        # read mixing parameters if not already done
-        if 'self.mixing_params' not in locals(): self.read_mixing_params()
-
-        with open(self.src + '/setup.txt', 'w') as file:
-            for key, value in self.mixing_params.items():
-                file.write(f"{key}\t{value}\n")
-        print("Mixing parameters exported to setup.txt")
-
+    # This function should be reworked. It must be more general.
+    # The relevant inlist options could be others than mass and entropy.
     def export_setup(self, M_p : float, s0 : float, output_file : str = 'failed_simulations.txt'):
         """Writes setup to file in logs parent directory"""
 
@@ -90,32 +29,18 @@ class MesaRun:
                 lengt_of_file = 1
 
             file.write(f"{M_p:.2f}\t{s0:.1f}\n")
-
-    def export_evolution_options(self, M_p : float, s0 : float, inlist_name : str = 'inlist_evolve')->None:
-        """Writes evolution options to evolution_parameters.txt inside the LOGS directory."""
-        
-        path = Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =['M_p', 's0'])
-        file = os.path.join(path, 'evolution_parameters.txt')
-        with open(file, 'w') as file:
-            for option in self.EVOLUTION_OPTIONS:
-                value = Inlist(inlist_name).read_option(option)
-                file.write(f"{option}\t{value}\n")
-                # release Inlist object
-                Inlist.delete_latest_instance()
-                
-        print(f"Evolution options of {path} exported to evolution_parameters.txt")
     
     def clean_logs(self, M_p, s0)->None:
         """Cleans the logs directory"""
         
         os.system(f'rm {Inlist.create_logs_path_string(logs_src= self.src, M_p = M_p, s0 = s0, logs_style =["M_p", "s0"])}/*')
 
-    def delete_failed_model_dirs(self)->None:
+    def delete_failed_model_dirs(self, failed_simulations_file = 'failed_simulations.txt')->None:
         """Deletes the model directories of failed simulations according to failed_simulations.txt"""
             
         # read failed_simulations.txt
         try:
-            with open(self.src+ '/' + 'failed_simulations.txt', 'r') as file:
+            with open(self.src+ '/' + failed_simulations_file, 'r') as file:
                 failed_sims = file.readlines()
                 # delete model directories
                 # [1:] because first line is header
@@ -127,7 +52,7 @@ class MesaRun:
                     os.system(f'rm -r {logs_path}')
 
         except FileNotFoundError:
-            print("No failed_simulations.txt found.")
+            print(f"No file {failed_simulations_file} found.")
 
     def delete_failed_simulations_file(self)->None:
         """Deletes the file containing the failed simulations, typically failed_simulations.txt"""
@@ -176,12 +101,62 @@ class MesaRun:
         return os.path.isfile(mod_file)
     
     @staticmethod
-    def create_relax_initial_entropy_file(s_kerg, relax_entropy_filename='relax_entropy_file.dat'):
+    def create_relax_entropy_file_homogeneous(s_kerg, relax_entropy_filename : str ='relax_entropy_file.dat'):
+        """Creates a relax entropy file for s(m) = s_kerg."""
         s = specific_entropy(s_kerg)
         with open(relax_entropy_filename, 'w') as file:
             file.write('1\n')
             file.write(f'1  {Inlist.fortran_format(s)}')
         print(f"Created entropy profile with s_kerg = {s_kerg}")
+    
+    @staticmethod
+    def _create_relax_entropy_list(s_of_m_kerg : Callable, n_points : int = 1000) -> np.ndarray:
+        """Creates a list of mass and entropy values for the relax entropy file."""
+
+        out = np.zeros((n_points, 2))
+        mass_bins = np.linspace(0, 1, n_points)
+        for i,m in enumerate(mass_bins):
+            out[i,0] = 1-m # mass fraction q starting from M_p
+            out[i,1] = specific_entropy(s_of_m_kerg(m))
+
+        # test wether any entropy values are negative
+        if np.any(out[:,1] < 0):
+            raise ValueError("Entropy values must be positive.")
+        
+        # flip array to have increasing mass
+        return np.flip(out, axis=0)
+    
+    @staticmethod
+    def create_relax_entropy_file(s_of_m_kerg : Callable, relax_entropy_filename : str='relax_entropy_file.dat', n_points : int = 1000) -> None:
+        """Creates a relax entropy file for s(m) = s_of_m(m).
+        
+        Parameters
+        ----------
+        s_of_m_kerg : Callable
+            A function that returns the entropy as a function of mass in kergs. The function is expected take m/M_p as an argument, i.e., relative in mass.
+        relax_entropy_filename : str, optional
+            The name of the relax entropy file. The default is 'relax_entropy_file.dat'.
+        n_points : int, optional
+            The number of points to use in the entropy profile. The default is 1000.
+        """
+
+        # tests
+        if not callable(s_of_m_kerg):
+            raise TypeError("s_of_m_kerg must be a function.")
+        if n_points < 1:
+            raise ValueError("n_points must be at least 1.")
+        
+        # create list of mass and entropy values
+        s_list = MesaRun._create_relax_entropy_list(s_of_m_kerg, n_points)
+
+        with open(relax_entropy_filename, 'w') as file:
+            # write header: number of points
+            file.write(f"{n_points}\n")
+            for l in s_list:
+                str_version = [f'{el:.16e}' for el in l]
+                file.write('  '.join(str_version)+'\n')
+
+        print(f'{relax_entropy_filename} was created successfully.')
 
     @staticmethod
     def create_inital_model(M_p:float, s0 : float = None, R_ini : float = None,

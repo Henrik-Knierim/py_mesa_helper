@@ -114,6 +114,37 @@ def Gaussian(m:np.ndarray, M_z:float, Z_core:float, Z_atm:float, **kwargs):
 
     return Z_atm + (Z_core-Z_atm)*np.exp(-m**2/(2.*sigma**2))
 
+def reverse_sigmoid(m:np.ndarray, m_core : float, steepness : float = 100, Z_core : float = 1, Z_env : float = Z_Sol, **kwargs):
+    """Returns an array of mass fractions for a reverse sigmoid compositional gradient.
+    
+    Parameters
+    ----------
+    m : np.ndarray
+        array of mass bins
+    steepness : float
+        steepness of the sigmoid slope. The larger the steeper. Default is 100.
+    m_core : float
+        mass of the core in Earth mass. Defined as the midpoint of the sigmoid.
+    Z_core : float
+        metallicity of the core. Default is 1.
+    Z_atm : float
+        metallicity of the envelope. Default is solar metallicity.
+    """
+    
+    # tests
+    if any(n < 0 for n in m):
+        raise Exception("m should contain positive numbers only")
+    elif m_core < 0:
+        raise Exception("m_core needs to be >= 0")
+    elif not 0<=Z_core<= 1:
+        raise Exception("Z_core needs to be between 0 and 1")
+    elif not 0<=Z_env<= 1:
+        raise Exception("Z_atm needs to be between 0 and 1")
+
+    m_core_M_Jup = m_core/M_Jup_in_Earth
+
+    return Z_core - (Z_core-Z_env)/(1+np.exp(-steepness*(m-m_core_M_Jup)))
+
 class CompositionalGradient:
     def __init__(self, method : str, M_p : float, iso_net = 'planets', **kwargs) -> None:
         
@@ -150,6 +181,9 @@ class CompositionalGradient:
 
         elif (self.method == 'Z_Gaussian') or (self.method == 'Y_Gaussian'):
             self.abu_profile = Gaussian
+
+        elif (self.method == 'Y_reverse_sigmoid') or (self.method == 'Z_reverse_sigmoid'):
+            self.abu_profile = reverse_sigmoid
 
         elif (self.method == 'Z_custom') or (self.method == 'Y_custom'):
             # you can pass a custom function as abu_profile

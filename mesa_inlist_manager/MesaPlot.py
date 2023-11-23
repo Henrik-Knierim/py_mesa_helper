@@ -21,6 +21,33 @@ class MesaPlot:
         else:
             self.Z_atm = Z_Sol
 
+    def profile_plot(self, x_axis: str, y_axis: str, **kwargs) -> None:
+        """Plots the profile data of a MESA simulation."""
+
+        # init log object
+        logs = mr.MesaLogDir(self.src)
+        
+        # get the profile
+        profile_data_kwargs = {key: value for key, value in kwargs.items() if key in logs.profile_data.__code__.co_varnames}
+        profile = logs.profile_data(**profile_data_kwargs)
+        
+        # Get the remaining kwargs not in profile_data_kwargs
+        plot_kwargs = {key: value for key, value in kwargs.items() if key not in profile_data_kwargs}
+
+        # get the data
+        x = profile.data(x_axis)
+        y = profile.data(y_axis)
+
+        # plot the data
+        plt.plot(x, y, **plot_kwargs)
+        plt.xlabel(x_axis)
+        plt.ylabel(y_axis)
+
+    def profile_evolution_plot(self, x_axis: str, y_axis: str, profile_numbers : list, **kwargs) -> None:
+        """Plots the profile data of a MESA simulation for multiple profile numbers."""
+        for n in profile_numbers:
+            self.profile_plot(x_axis, y_axis, profile_number = n, **kwargs)
+
     def _dlogZ_dlogP_two_axes_plot(self, ax, ax2, **kwargs)-> None:
         """Plots the gradient of the metallicity profile as a function of logP."""
 

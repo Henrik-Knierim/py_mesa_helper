@@ -27,6 +27,9 @@ class Simulation:
         
         if suite != '':
             self.log_dirs = os.listdir(self.suite_dir)
+            # sort the log directories
+            # maybe you need to modify this if you have multiple suite parameters
+            self.log_dirs.sort()
 
         if self.sim != '':
             self.sim_dir = os.path.join(self.suite_dir, self.sim)
@@ -39,6 +42,9 @@ class Simulation:
         self.remove_non_converged_simulations(final_age)
 
         self.n_simulations = len(self.histories)
+
+        # add the simulation parameters to self.results
+        self.results = pd.DataFrame({'log_dir': self.log_dirs})
 
     def _init_mesa_logs(self) -> None:
         """Initialzes `MesaLogDir` objects for each log directory in the simulation."""
@@ -69,24 +75,31 @@ class Simulation:
         if hasattr(self, 'sim_dir'):
             self.history = self.histories[self.sim]
 
+    @staticmethod
+    def extract_value(string, free_param : str):
+        """Extracts the numerical value of `free_param` from `string`."""
+        if type(free_param) != str:
+            raise TypeError('free_params must be a string')
+        elif free_param not in string:
+            raise ValueError(f'Parameter {free_param} not found in string {string}')
+
+        splitted_string = string.split(free_param)
+        value = float(splitted_string[1].split('_')[1])
+        return value
+  
+        
     def get_suite_params(self, free_params):
-        """Returns a dictonary of the free parameters of the simulation suite."""
-        out = {log : {} for log in self.logs}
-        for log in self.logs:
-            sim_dir = log.split('/')[-1]
-            for param in free_params:
-                if param in sim_dir:
-                    splitted_sim_dir = sim_dir.split(param)
-                    value = float(splitted_sim_dir[1].split('_')[1])
-                    out[log][param] =  value
+        """Add numerical value of `free_params` to the results DataFrame."""
+        # make free_params a list if it is not already
+        if type(free_params) != list:
+            free_params = [free_params]
 
-                else:
-                    raise ValueError(f'Parameter {param} not found in simulation directory {sim_dir}')
+        out = {}
+        for free_param in free_params:
+            out[free_param] = [self.extract_value(log_dir, free_param) for log_dir in self.results['log_dir']]
 
-        # sort the data by the first free parameter
-        out = dict(sorted(out.items(), key=lambda item: item[1][free_params[0]]))
-
-        self.results = out
+        self.results = pd.concat([self.results, pd.DataFrame(out)], axis = 1)
+        
 
     # ------------------------------ #
     # --- Simulation Convergence --- #
@@ -129,6 +142,7 @@ class Simulation:
             if not bool:
                 del self.histories[key]
                 del self.logs[key]
+                del self.log_dirs[self.log_dirs.index(key)]
         
     def delete_suite(self):
         """Cleans the logs directory."""
@@ -141,14 +155,14 @@ class Simulation:
     # ------------------------------ #
     # ----- Simulation Results ----- #
     # ------------------------------ #
-    def add_history_data(self, history_key, model = -1):
+    def add_history_data(self, history_keys, model = -1):
         """Adds `history_key` to `self.results`."""
-        if hasattr(self, 'results'):
-            for log_key in self.results:
-                self.results[log_key][history_key] = self.histories[log_key].data(history_key)[model]
-
-        else:
-            raise ValueError('No results found. Run get_suite_params() first.')
+        if type(history_keys) != list:
+            history_keys = [history_keys]
+        
+        for history_key in history_keys:
+            out = [self.histories[log_key].data(history_key)[model] for log_key in self.results['log_dir']]
+            self.results[history_key] = out
     
     @staticmethod
     def integrate_profile(profile, quantity, m0 = 0, m1 = 1):
@@ -166,7 +180,7 @@ class Simulation:
         quantity = profile.data(quantity)[(m0 < m_Jup)&(m_Jup<m1)]
         return np.dot(dm, quantity)/np.sum(dm)
 
-
+    
     def add_integrated_profile_data(self, quantity, m0 = 0, m1 = 1, profile_number = -1, name = None):
         """Integrates the profile quantity from m0 to m1 and adds it to `self.results`."""
         if name is None:
@@ -174,13 +188,9 @@ class Simulation:
         else:
             integrated_quantity_key = name
         
-        if hasattr(self, 'results'):
-            for log_key in self.results:
-                profile = self.logs[log_key].profile_data(profile_number = profile_number)
-                self.results[log_key][integrated_quantity_key] = Simulation.integrate_profile(profile, quantity, m0, m1)
+        out = [Simulation.integrate_profile(self.logs[log_key].profile_data(profile_number = profile_number), quantity, m0, m1) for log_key in self.results['log_dir']]
+        self.results[integrated_quantity_key] = out
 
-        else:
-            raise ValueError('No results found. Run get_suite_params() first.')
         
     def add_mean_profile_data(self, quantity, m0 = 0, m1 = 1, profile_number = -1, name = None):
         """Computes the mean of the profile quantity from m0 to m1 and adds it to `self.results`."""
@@ -190,24 +200,9 @@ class Simulation:
         else:
             integrated_quantity_key = name
         
-        if hasattr(self, 'results'):
-            for log_key in self.results:
-                profile = self.logs[log_key].profile_data(profile_number = profile_number)
-                self.results[log_key][integrated_quantity_key] = Simulation.mean_profile_value(profile, quantity, m0, m1)
+        out = [Simulation.mean_profile_value(self.logs[log_key].profile_data(profile_number = profile_number), quantity, m0, m1) for log_key in self.results['log_dir']]
+        self.results[integrated_quantity_key] = out
 
-        else:
-            raise ValueError('No results found. Run get_suite_params() first.')
-    
-    def extract_results(self, result_keys):
-        """Returns the keys specified in result_keys."""
-        out = {}
-        for key in result_keys:
-            out[key] = np.zeros(self.n_simulations)
-            for i, log_key in enumerate(self.results):
-                out[key][i] = self.results[log_key][key]
-        
-        return out
-    
     # ------------------------------ #
     # -------- Plot Results -------- #
     # ------------------------------ #
@@ -232,17 +227,6 @@ class Simulation:
         for log_key in self.logs:
             history = self.histories[log_key]
             ax.plot(history.data(x), history.data(y), **kwargs)
-        
-        ax.set(xlabel = x, ylabel = y)
-        return ax
-    
-    def results_plot(self, x, y, ax = None, **kwargs):
-        """Plots the results with (x, y) as the axes."""
-        if ax is None:
-            fig, ax = plt.subplots()
-        
-        data = self.extract_results([x, y])
-        ax.plot(data[x], data[y], **kwargs)
         
         ax.set(xlabel = x, ylabel = y)
         return ax

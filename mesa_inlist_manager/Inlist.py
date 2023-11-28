@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from mesa_inlist_manager.astrophys import *
+from typing import Callable
 
 class Inlist:
     """Class for reading and writing inlist files."""
@@ -482,3 +483,63 @@ class Inlist:
             # go through all options and set them
             for option_name, option_value in options.items():
                 inlist.set_option(option_name, option_value)
+
+    @staticmethod
+    def create_relax_entropy_file_homogeneous(s_kerg, relax_entropy_filename : str ='relax_entropy_file.dat'):
+        """Creates a relax entropy file for s(m) = s_kerg."""
+        s = specific_entropy(s_kerg)
+        with open(relax_entropy_filename, 'w') as file:
+            file.write('1\n')
+            file.write(f'1  {Inlist.fortran_format(s)}')
+        print(f"Created entropy profile with s_kerg = {s_kerg}")
+
+    
+    @staticmethod
+    def _create_relax_entropy_list(s_of_m_kerg : Callable, n_points : int = 1000) -> np.ndarray:
+        """Creates a list of mass and entropy values for the relax entropy file."""
+
+        out = np.zeros((n_points, 2))
+        mass_bins = np.linspace(0, 1, n_points)
+        for i,m in enumerate(mass_bins):
+            out[i,0] = 1-m # mass fraction q starting from M_p
+            out[i,1] = specific_entropy(s_of_m_kerg(m))
+
+        # test wether any entropy values are negative
+        if np.any(out[:,1] < 0):
+            raise ValueError("Entropy values must be positive.")
+        
+        # flip array to have increasing mass
+        return np.flip(out, axis=0)
+    
+
+    @staticmethod
+    def create_relax_entropy_file(s_of_m_kerg : Callable, relax_entropy_filename : str='relax_entropy_file.dat', n_points : int = 1000) -> None:
+        """Creates a relax entropy file for s(m) = s_of_m(m).
+        
+        Parameters
+        ----------
+        s_of_m_kerg : Callable
+            A function that returns the entropy as a function of mass in kergs. The function is expected take m/M_p as an argument, i.e., relative in mass.
+        relax_entropy_filename : str, optional
+            The name of the relax entropy file. The default is 'relax_entropy_file.dat'.
+        n_points : int, optional
+            The number of points to use in the entropy profile. The default is 1000.
+        """
+
+        # tests
+        if not callable(s_of_m_kerg):
+            raise TypeError("s_of_m_kerg must be a function.")
+        if n_points < 1:
+            raise ValueError("n_points must be at least 1.")
+        
+        # create list of mass and entropy values
+        s_list = Simulation._create_relax_entropy_list(s_of_m_kerg, n_points)
+
+        with open(relax_entropy_filename, 'w') as file:
+            # write header: number of points
+            file.write(f"{n_points}\n")
+            for l in s_list:
+                str_version = [f'{el:.16e}' for el in l]
+                file.write('  '.join(str_version)+'\n')
+
+        print(f'{relax_entropy_filename} was created successfully.')

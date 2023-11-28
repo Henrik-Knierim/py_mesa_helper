@@ -1,12 +1,13 @@
 # class for anything related to after the simulation has been run
 # for example, analyzing, plotting, saving, etc.
-import enum
+from turtle import st
+import matplotlib.pyplot as plt
 import os
-from unittest import result
 import numpy as np
 import mesa_reader as mr
-from py import log
-from mesa_inlist_manager.astrophys import M_Jup_in_g
+import pandas as pd
+from mesa_inlist_manager.astrophys import M_Jup_in_g, specific_entropy
+
 class Simulation:
     """Class for anything related to after the simulation has been run. For example, analyzing, plotting, saving, etc."""
 
@@ -122,12 +123,20 @@ class Simulation:
         """Removes all simulations that do not converge according to the criterion."""
         
         bools = self.has_final_age(final_age)
-
+        self.failed_simulations = [key for key, bool in bools.items() if not bool]
+        
         for key, bool in bools.items():
             if not bool:
                 del self.histories[key]
                 del self.logs[key]
-    
+        
+    def delete_suite(self):
+        """Cleans the logs directory."""
+        os.system(f'rm -r {self.suite_dir}')
+
+    def delete_failed_simulations(self, final_age):
+        """Deletes the failed simulations."""
+        pass
     
     # ------------------------------ #
     # ----- Simulation Results ----- #
@@ -199,3 +208,53 @@ class Simulation:
         
         return out
     
+    # ------------------------------ #
+    # -------- Plot Results -------- #
+    # ------------------------------ #
+
+    def profile_plot(self, x, y, profile_number = -1, ax = None, **kwargs):
+        """Plots the profile data with (x, y) as the axes at `profile_number`."""
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        for log_key in self.logs:
+            profile = self.logs[log_key].profile_data(profile_number = profile_number)
+            ax.plot(profile.data(x), profile.data(y), **kwargs)
+        
+        ax.set(xlabel = x, ylabel = y)
+        return ax
+    
+    def history_plot(self, x, y, ax = None, **kwargs):
+        """Plots the history data with (x, y) as the axes."""
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        for log_key in self.logs:
+            history = self.histories[log_key]
+            ax.plot(history.data(x), history.data(y), **kwargs)
+        
+        ax.set(xlabel = x, ylabel = y)
+        return ax
+    
+    def results_plot(self, x, y, ax = None, **kwargs):
+        """Plots the results with (x, y) as the axes."""
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        data = self.extract_results([x, y])
+        ax.plot(data[x], data[y], **kwargs)
+        
+        ax.set(xlabel = x, ylabel = y)
+        return ax
+    
+    # ------------------------------ #
+    # ------- Static Methods ------- #
+    # ------------------------------ #
+    
+    @staticmethod
+    def mod_file_exists(mod_file = 'planet_relax_composition.mod'):
+        """Returns True if the mod_file exits."""
+        # test if the file ending is .mod
+        if mod_file[-3:] != 'mod':
+            raise ValueError('mod_file must end with .mod')
+        return os.path.isfile(mod_file)

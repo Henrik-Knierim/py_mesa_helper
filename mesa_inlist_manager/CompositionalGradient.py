@@ -1,8 +1,8 @@
 # class for creating compositional gradients
 # packages
 import numpy as np
-import scipy.integrate as integrate
 from scipy.special import erf
+from typing import Callable
 from mesa_inlist_manager.astrophys import scaled_solar_ratio_mass_fractions, X_Sol, Y_Sol, Z_Sol, M_Earth_in_Jup, M_Jup_in_Earth
 
 # abundace data for basic.net
@@ -18,166 +18,25 @@ X_el_basic = {
     "Mg24": 0.000539806489881855
 }
 
-# compositional profiles
-def lin(m:np.ndarray, m_1:float, m_2:float, f_1:float, f_2:float, **kwargs):
-
-    # tests
-    if m_2 < m_1:
-        raise Exception("m_2 must be larger than m_1")
-    elif m_1 < 0:
-        raise Exception("m_1 needs to be >= 0")
-    elif any(n < 0 for n in m):
-        raise Exception("m should contain positive numbers only")
-    
-    # linear function f = a m + b
-    a = - (f_2-f_1)/(m_1-m_2)
-    b = - (m_2*f_1 - m_1*f_2)/(m_1 - m_2)
-
-    return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [lambda m: f_1, lambda m: a*m+b, f_2])
-
-def Z_lin_slope_fixed(m : np.array, m_core : float, Z_0 : float, Z_atm : float, **kwargs):
-
-    # tests
- 
-    if any(n < 0 for n in m):
-        raise Exception("m should contain positive numbers only")
-    elif m_core < 0:
-        raise Exception("m_core needs to be >= 0")
-    elif not 0<=Z_atm<= 1:
-        raise Exception("Z_atm needs to be between 0 and 1")
-    elif not 0<=Z_0<= 1:
-        raise Exception("Z_atm needs to be between 0 and 1")
-
-    return np.piecewise(m, [m <= m_core, m > m_core], [lambda m: Z_0 + m*(-Z_0 + Z_atm)/m_core, Z_atm])
-
-
-def Z_lin_M_z(m:np.ndarray, m_1:float, m_2:float, M_z:float, Z_atm:float, **kwargs):
-
-    M_z = M_z*M_Earth_in_Jup
-    # tests
-    if m_2 < m_1:
-        raise Exception("m_2 must be larger than m_1")
-    elif m_1 < 0:
-        raise Exception("m_1 needs to be >= 0")
-    elif any(n < 0 for n in m):
-        raise Exception("m should contain positive numbers only")
-    elif M_z < 0:
-        raise Exception("M_z needs to be >= 0")
-    elif not 0<=Z_atm<= 1:
-        raise Exception("Z_atm needs to be between 0 and 1")
-
-    # for some reason, I need to pass the lambda functions directly without predefining them ...
-    return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [lambda m:(-2*M_z+(-m_1+m_2)*Z_atm)/(m_1 - m_2), lambda m: (2*(-m+m_2)*M_z + (m_1-m_2)*(-2*m+m_1+m_2)*Z_atm)/(m_1-m_2)**2, Z_atm])
-
-def stepwise(m, m_transition, f_1, f_2, **kwargs):
-
-    # tests
-    if any(n < 0 for n in m):
-        raise Exception("m should contain positive numbers only")
-    
-    return np.piecewise(m, [m <= m_transition, m > m_transition], [f_1, f_2])
-
-def exponential(m:np.ndarray, m_core:float, m_dilute:float, alpha:float, Z_core:float, Z_atm, **kwargs):
-    """Returns an array of mass fractions for a stepwise compositional gradient with an exponential transition."""
-
-    # tests
-    if m_dilute < m_core:
-        raise Exception("m_dilute must be larger than m_core")
-    elif m_core < 0:
-        raise Exception("m_core needs to be >= 0")
-    elif any(n < 0 for n in m):
-        raise Exception("m should contain positive numbers only")
-    elif not 0<=Z_core<= 1:
-        raise Exception("Z_core needs to be between 0 and 1")
-    elif not 0<=Z_atm<= 1:
-        raise Exception("Z_atm needs to be between 0 and 1")
-    
-    return np.piecewise(m, [m <= m_core, ((m_core <= m) & (m <= m_dilute)), m > m_dilute], [lambda m: Z_core, lambda m: (Z_core-Z_atm)*np.exp(alpha*m)/(np.exp(alpha*m_core)-np.exp(alpha*m_dilute)) + np.exp(m_core*alpha)*(Z_core-Z_atm)/(np.exp(alpha*m_dilute)-np.exp(alpha*m_core)) + Z_core, Z_atm])
-
-def Gaussian(m:np.ndarray, M_z:float, Z_core:float, Z_atm:float, **kwargs):
-    """Returns an array of mass fractions for a Gaussian compositional gradient."""
-    
-    # tests
-    if any(n < 0 for n in m):
-        raise Exception("m should contain positive numbers only")
-    elif M_z < 0:
-        raise Exception("M_z needs to be >= 0")
-    elif not 0<=Z_core<= 1:
-        raise Exception("Z_core needs to be between 0 and 1")
-    elif not 0<=Z_atm<= 1:
-        raise Exception("Z_atm needs to be between 0 and 1")
-    
-    # fix sigma such that the integral of the Gaussian to 3 sigma is equal to M_z
-    # additonally, use a conversion factor for M_z to convert it to Earth masses
-
-    sigma = (2. * M_z) / (6.*M_Jup_in_Earth*Z_atm + (M_Jup_in_Earth*np.sqrt(2.*np.pi) * erf(3./np.sqrt(2.)) * (Z_core-Z_atm)))
-
-    return Z_atm + (Z_core-Z_atm)*np.exp(-m**2/(2.*sigma**2))
-
-def reverse_sigmoid(m:np.ndarray, m_core : float, steepness : float = 100, Z_core : float = 1, Z_env : float = Z_Sol, **kwargs):
-    """Returns an array of mass fractions for a reverse sigmoid compositional gradient.
-    
-    Parameters
-    ----------
-    m : np.ndarray
-        array of mass bins
-    steepness : float
-        steepness of the sigmoid slope. The larger the steeper. Default is 100.
-    m_core : float
-        mass of the core in Earth mass. Defined as the midpoint of the sigmoid.
-    Z_core : float
-        metallicity of the core. Default is 1.
-    Z_atm : float
-        metallicity of the envelope. Default is solar metallicity.
-    """
-    
-    # tests
-    if any(n < 0 for n in m):
-        raise Exception("m should contain positive numbers only")
-    elif m_core < 0:
-        raise Exception("m_core needs to be >= 0")
-    elif not 0<=Z_core<= 1:
-        raise Exception("Z_core needs to be between 0 and 1")
-    elif not 0<=Z_env<= 1:
-        raise Exception("Z_atm needs to be between 0 and 1")
-
-    m_core_M_Jup = m_core/M_Jup_in_Earth
-
-    return Z_core - (Z_core-Z_env)/(1+np.exp(-steepness*(m-m_core_M_Jup)))
-
-# def exponential_decay(m:np.ndarray, m_core : float, steepness : float = 100, Z_core : float = 1, Z_env : float = Z_Sol, **kwargs):
-#     """Returns an array of mass fractions for an exponential decay compositional gradient.
-    
-#     Parameters
-#     ----------
-#     m : np.ndarray
-#         array of mass bins
-#     steepness : float
-#         steepness of the sigmoid slope. The larger the steeper. Default is 100.
-#     m_core : float
-#         mass of the core in Earth mass. Defined as the midpoint of the sigmoid.
-#     Z_core : float
-#         metallicity of the core. Default is 1.
-#     Z_atm : float
-#         metallicity of the envelope. Default is solar metallicity.
-#     """
-    
-#     # tests
-#     if any(n < 0 for n in m):
-#         raise Exception("m should contain positive numbers only")
-#     elif m_core < 0:
-#         raise Exception("m_core needs to be >= 0")
-#     elif not 0<=Z_core<= 1:
-#         raise Exception("Z_core needs to be between 0 and 1")
-#     elif not 0<=Z_env<= 1:
-#         raise Exception("Z_atm needs to be between 0 and 1")
-
-#     m_core_M_Jup = m_core/M_Jup_in_Earth
-
-#     return Z_core - (Z_core-Z_env)*np.exp(-steepness*(m-m_core_M_Jup))
-
 class CompositionalGradient:
-    def __init__(self, method : str, M_p : float, iso_net = 'planets', **kwargs) -> None:
+
+    def __init__(self, gradient : str, M_p : float = 1.0, iso_net = 'planets') -> None:
+        """Creates a compositional gradient for a planet.
+        
+        Parameters
+        ----------
+        gradient : str
+            gradient type. Options are:
+            - 'Y' : gradient in Helium mass fraction (assumes pure H-He)
+            - 'Z' : gradient in metal mass fraction (assumes metal abundances from Lodders+2020)
+        M_p : float
+            planet mass in Jupiter masses. Default is 1; if your profile is given in relative mass fraction, you can leave this as 1.
+        iso_net : str
+            isotope network. Options are:
+            - 'basic' : basic.net from MESA
+            - 'planets' : planets.net, custom network for planets with only h (X), he4 (Y), and o16 (Z)
+
+        """
         
         # planet mass as input parameter
         self.M_p = M_p
@@ -189,46 +48,29 @@ class CompositionalGradient:
         
         self.iso_net = iso_net
 
-        self.method = method
-
-        # set gradient self.method
-        if (self.method == 'Y_lin') or (self.method == 'Z_lin'):
-            self.abu_profile = lin
-
-        elif (self.method == 'Y_log') or (self.method == 'Z_log'):
-            self.abu_profile = lambda m, m_1, m_2, log_f_1, log_f_2: 10**lin(m, m_1, m_2, log_f_1, log_f_2)
-
-        elif self.method == 'Z_lin_M_z':
-            self.abu_profile = Z_lin_M_z
-
-        elif self.method == 'Z_lin_slope_fixed':
-            self.abu_profile = Z_lin_slope_fixed
-            
-        elif (self.method == 'Y_stepwise') or (self.method == 'Z_Stepwise'):
-            self.abu_profile = stepwise
-
-        elif (self.method == 'Y_stepwise_with_exponential_transition') or (self.method == 'Z_stepwise_with_exponential_transition'):
-            self.abu_profile = exponential
-
-        elif (self.method == 'Z_Gaussian') or (self.method == 'Y_Gaussian'):
-            self.abu_profile = Gaussian
-
-        elif (self.method == 'Y_reverse_sigmoid') or (self.method == 'Z_reverse_sigmoid'):
-            self.abu_profile = reverse_sigmoid
-
-        elif (self.method == 'Z_custom') or (self.method == 'Y_custom'):
-            # you can pass a custom function as abu_profile
-            self.abu_profile = kwargs['abu_profile']
-
+        if gradient in ['Y', 'Z']:
+            self.gradient = gradient
         else:
-            raise Exception(f"method={self.method} not supported.")
+            raise Exception(f"gradient={gradient} not supported.")
         
-        # set abundance scaling method
-        if 'Z' in self.method:
+        # set scaled abundances
+        self._scaled_abundances()
+        
+    def _Z_is_defined(self,):
+        """Returns True if `self.abu_profile` is defined."""
+        is_true = hasattr(self, 'abu_profile')
+        if not is_true:
+            raise Exception("self.abu_profile is not defined.")
+        return is_true
+    
+    def _scaled_abundances(self):
+        """Defines `self.scaled_abundances` depending on `self.gradient`."""
+        if self.gradient == 'Z':
             self.scaled_abundances = self._scaled_abundances_Z
-
-        elif 'Y' in self.method:
+        elif self.gradient == 'Y':
             self.scaled_abundances = self._scaled_abundances_H_He
+        else:
+            raise Exception(f"gradient={self.gradient} not supported.")
 
     # scaled abundances
     def _scaled_abundances_Z(self, Z:float):
@@ -239,6 +81,8 @@ class CompositionalGradient:
             abu.update((el,X_el*f(el)) for el, X_el in X_el_basic.items())
         elif self.iso_net == 'planets':
             abu = {"H":X, "He4":Y, "O16":Z}
+        else:
+            raise Exception(f"iso_net={self.iso_net} not supported.")
 
         return abu
     
@@ -251,29 +95,10 @@ class CompositionalGradient:
             abu.update((el,X_el*f(el)) for el, X_el in X_el_basic.items())
         elif self.iso_net == 'planets':
             abu = {"H":X, "He4":Y, "O16":0.}
+        else:
+            raise Exception(f"iso_net={self.iso_net} not supported.")
         return abu
 
-
-    # compute homogenous composition for given gradient
-
-    def M_z_tot(self, *args, unit = 'M_Earth', **kwargs):
-        """Computes the total mass of heavy elements inside the planet."""
-        # brute force numerical integration of the total h
-        f = lambda x: self.abu_profile(np.array([x]), *args, **kwargs)
-        retval = integrate.quad(f, 0, self.M_p)
-        
-        # is residual to big?
-        if retval[1]>1e-5:
-            raise Exception("The error of M_z_tot exceeds 1e-5.")
-        
-        if unit == 'M_Jup':
-            return retval[0]
-        elif unit == 'M_Earth':
-            return retval[0] * M_Jup_in_Earth
-    
-    def Z_hom(self, *args, **kwargs):
-        """Computes the metallicity assuming all heavies are distributed homogenously."""
-        return self.M_z_tot(*args, unit='M_Jup', **kwargs)/self.M_p
     
     # create file for relax_initial_composition
 
@@ -299,7 +124,7 @@ class CompositionalGradient:
 
         # list of Z(m) (or Y(m))
         mass_bins = self.m(**kwargs)
-        abu_list = self.abu_profile(mass_bins, *args, **kwargs)
+        abu_list = self._abu_profile(mass_bins, *args, **kwargs)
 
         l = []
         # first mass bin for m_2:
@@ -318,22 +143,12 @@ class CompositionalGradient:
     def create_relax_inital_composition_file(self, *args, **kwargs):
 
         """
-
         Creates a file for `MESA`'s `relax_inital_composition functionality`. The `**kwargs` depend upon the self.method used.
-        For Z_lin_M_z, we have
-
-        Parameters
-        ----------
-        
-        m_1 : float
-            lower bound for linear profile
-        m_2 : float
-            upper bound for linear profile
-        M_z : float
-            core mass
-        Z_atm : float
-            envelope metallicity before mixing
         """
+
+        # tests
+        if not self._Z_is_defined():
+            raise Exception("self.abu_profile is not defined.")
         
         relax_composition_filename='relax_composition_file.dat'
 
@@ -350,19 +165,393 @@ class CompositionalGradient:
 
         print(f'{relax_composition_filename} was created successfully.')
 
-    @staticmethod
-    def data_string_by_method(method:str, quantity:str = None, **kwargs):
-        if "Z" in method:
-            el = "o16"
-            gradient = "z"
-        elif "Y" in method:
-            el = "he4"
-            gradient = "y"
+    # ----------------------------------------- #
+    # -------- Compositional Gradients -------- #
+    # ----------------------------------------- #
 
-        if quantity is None:
-            return gradient
+    @property
+    def abu_profile(self):
+        return self._abu_profile
+    
+    @abu_profile.setter
+    def abu_profile(self, func):
+        
+        if not callable(func):
+            raise Exception("func must be a callable function.")
+        
+        self._abu_profile = func
+
+    @staticmethod
+    def lin(m:np.ndarray, m_1:float, m_2:float, f_1:float, f_2:float, **kwargs):
+
+        # tests
+        if m_2 < m_1:
+            raise Exception("m_2 must be larger than m_1")
+        elif m_1 < 0:
+            raise Exception("m_1 needs to be >= 0")
+        elif any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        
+        # linear function f = a m + b
+        a = - (f_2-f_1)/(m_1-m_2)
+        b = - (m_2*f_1 - m_1*f_2)/(m_1 - m_2)
+
+        return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [lambda m: f_1, lambda m: a*m+b, f_2])
+    
+    @staticmethod
+    def Z_lin_slope_fixed(m : np.array, m_core : float, Z_0 : float, Z_atm : float, **kwargs):
+
+        # tests
+    
+        if any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        elif m_core < 0:
+            raise Exception("m_core needs to be >= 0")
+        elif not 0<=Z_atm<= 1:
+            raise Exception("Z_atm needs to be between 0 and 1")
+        elif not 0<=Z_0<= 1:
+            raise Exception("Z_atm needs to be between 0 and 1")
+
+        return np.piecewise(m, [m <= m_core, m > m_core], [lambda m: Z_0 + m*(-Z_0 + Z_atm)/m_core, Z_atm])
+
+    @staticmethod
+    def Z_lin_M_z(m:np.ndarray, m_1:float, m_2:float, M_z:float, Z_atm:float, **kwargs):
+
+        M_z = M_z*M_Earth_in_Jup
+        # tests
+        if m_2 < m_1:
+            raise Exception("m_2 must be larger than m_1")
+        elif m_1 < 0:
+            raise Exception("m_1 needs to be >= 0")
+        elif any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        elif M_z < 0:
+            raise Exception("M_z needs to be >= 0")
+        elif not 0<=Z_atm<= 1:
+            raise Exception("Z_atm needs to be between 0 and 1")
+
+        # for some reason, I need to pass the lambda functions directly without predefining them ...
+        return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [lambda m:(-2*M_z+(-m_1+m_2)*Z_atm)/(m_1 - m_2), lambda m: (2*(-m+m_2)*M_z + (m_1-m_2)*(-2*m+m_1+m_2)*Z_atm)/(m_1-m_2)**2, Z_atm])
+
+    @staticmethod
+    def stepwise(m, m_transition, f_1, f_2, **kwargs):
+
+        # tests
+        if any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        
+        return np.piecewise(m, [m <= m_transition, m > m_transition], [f_1, f_2])
+    
+    @staticmethod
+    def exponential(m:np.ndarray, alpha:float, m_start:float, m_end:float, Z_start:float, Z_end : float):
+        """Returns an array of mass fractions for an exponential function that is `Z_core` at `m_start` and `Z_env` at `m_end`.
+
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        alpha : float
+            exponential decay constant
+        m_start : float
+            mass at which the exponential function starts
+        m_end : float
+            mass at which the exponential function ends
+        Z_start : float
+            metallicity at `m_start`
+        Z_end : float
+            metallicity at `m_end`
+        
+        Returns
+        -------
+        np.ndarray
+            array of mass fractions
+
+        """
+
+        # tests
+        if m_end < m_start:
+            raise Exception("m_end must be larger than m_start")
+        elif m_start < 0:
+            raise Exception("m_start needs to be >= 0")
+        elif any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        elif not 0<=Z_start<= 1:
+            raise Exception("Z_core needs to be between 0 and 1")
+        elif not 0<=Z_end<= 1:
+            raise Exception("Z_env needs to be between 0 and 1")
+        if alpha == 0:
+            retval = (m*Z_start - m_end*Z_start - m * Z_end + m_start * Z_end)/(m_start - m_end)
         else:
-            return quantity + "_" + el
+            retval = (np.exp(alpha*m) * (Z_start - Z_end) + np.exp(alpha * m_start) * Z_end - np.exp(alpha * m_end) * Z_start)/(np.exp(alpha * m_start) - np.exp(alpha * m_end))
+
+        if (min(retval) < 0 or max(retval) > 1):
+            print("WARNING: exponential function is not between 0 and 1.")
+
+        return retval
+    
+    @staticmethod
+    def Gaussian(m:np.ndarray, M_z:float, Z_core:float, Z_atm:float, **kwargs):
+        """Returns an array of mass fractions for a Gaussian compositional gradient."""
+        
+        # tests
+        if any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        elif M_z < 0:
+            raise Exception("M_z needs to be >= 0")
+        elif not 0<=Z_core<= 1:
+            raise Exception("Z_core needs to be between 0 and 1")
+        elif not 0<=Z_atm<= 1:
+            raise Exception("Z_atm needs to be between 0 and 1")
+        
+        # fix sigma such that the integral of the Gaussian to 3 sigma is equal to M_z
+        # additonally, use a conversion factor for M_z to convert it to Earth masses
+
+        sigma = (2. * M_z) / (6.*M_Jup_in_Earth*Z_atm + (M_Jup_in_Earth*np.sqrt(2.*np.pi) * erf(3./np.sqrt(2.)) * (Z_core-Z_atm)))
+
+        return Z_atm + (Z_core-Z_atm)*np.exp(-m**2/(2.*sigma**2))
+    
+    @staticmethod
+    def reverse_sigmoid(m:np.ndarray, m_b : float, steepness : float = 100, Z_core : float = 1, Z_env : float = Z_Sol, **kwargs):
+        """Returns an array of mass fractions for a reverse sigmoid compositional gradient.
+        
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        steepness : float
+            steepness of the sigmoid slope. The larger the steeper. Default is 100.
+        m_b : float
+            mass of the core in Earth mass. Defined as the midpoint of the sigmoid.
+        Z_core : float
+            metallicity of the core. Default is 1.
+        Z_env : float
+            metallicity of the envelope. Default is solar metallicity.
+        """
+        
+        # tests
+        if any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        elif m_b < 0:
+            raise Exception("m_core needs to be >= 0")
+        elif not 0<=Z_core<= 1:
+            raise Exception("Z_core needs to be between 0 and 1")
+        elif not 0<=Z_env<= 1:
+            raise Exception("Z_env needs to be between 0 and 1")
+
+        m_core_M_Jup = m_b/M_Jup_in_Earth
+
+        return Z_core - (Z_core-Z_env)/(1+np.exp(-steepness*(m-m_core_M_Jup)))
+    
+    @staticmethod
+    def piecewise_with_smoothed_exponential_transition(m:np.ndarray, m_core : float, dm_core : float, m_dilute : float, dm_dilute : float, Z_core : float, Z_env : float, alpha : float):
+        """Returns an array of mass fractions for a piecewise compositional gradient with a smoothed exponential transition.
+        
+        The smoothing is done by a cubic transition function, where the fast decreasing side is always the constant function.
+        All mass units are relative to the planet mass.
+
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+
+        m_core : float
+            mass coordinate of the core
+        dm_core : float
+            width of the core - dilute transition
+        m_dilute : float
+            mass coordinate of the end of the dilute region
+        dm_dilute : float
+            width of the dilute - envelope transition
+        Z_core : float
+            metallicity of the core
+        Z_env : float
+            metallicity of the envelope
+        alpha : float
+            exponential decay constant
+        """
+        
+        # tests
+        if any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        elif m_core < 0:
+            raise Exception("m_core needs to be >= 0")
+        elif dm_core < 0:
+            raise Exception("dm_core needs to be >= 0")
+        elif m_dilute < 0:
+            raise Exception("m_dilute needs to be >= 0")
+        elif dm_dilute < 0:
+            raise Exception("dm_dilute needs to be >= 0")
+        elif not 0<=Z_core<= 1:
+            raise Exception("Z_core needs to be between 0 and 1")
+        elif not 0<=Z_env<= 1:
+            raise Exception("Z_env needs to be between 0 and 1")
+        
+        # transition functions
+        f_core = lambda m: np.full_like(m, Z_core) 
+        f_dilute = lambda m: CompositionalGradient.exponential(m, alpha = alpha, m_start = m_core, m_end = m_dilute, Z_start = Z_core, Z_end = Z_env)
+        f_env = lambda m: np.full_like(m, Z_env) 
+
+        # transition functions for the cubic transition
+        f_core_dilute = lambda m: CompositionalGradient.cubic_transition_fast_decrease(m, f_1 = f_core, f_2 = f_dilute, m_1 =  m_core, m_2 = m_core + dm_core)
+        f_complete = CompositionalGradient.cubic_transition(m, f_1=f_core_dilute, f_2=f_env, m_1=m_dilute-dm_dilute, m_2=m_dilute)
+
+        return f_complete
 
             
 
+    # ----------------------------------------- #
+    # --------- Transition Functions ---------- #
+    # ----------------------------------------- #
+
+    # Here, we define a number of functions that can be used to create a transition between two functions.
+    # Many of these use the same parameters, so we define a parent function that takes care of the tests and then calls the transition function.
+
+    @staticmethod
+    def _transition_function(m : np.ndarray, f_transition : Callable, f_1 : Callable, f_2 : Callable, m_1 : float, m_2 : float):
+        """Parent function for transition functions. Tests the input parameters and then calls the transition function.
+        
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        f_transition : Callable
+            transition function
+        f_1 : Callable
+            function for the first part of the transition
+        f_2 : Callable
+            function for the second part of the transition
+        m_1 : float
+            mass at which the transition starts
+        m_2 : float
+            mass at which the transition ends
+        """
+
+        # tests
+        if m_2 < m_1:
+            raise Exception("m_2 must be larger than m_1")
+        elif m_1 < 0:
+            raise Exception("m_1 needs to be >= 0")
+        elif any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        
+        return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [f_1, f_transition , f_2])
+
+
+    @staticmethod
+    def linear_transition(m : np.ndarray, f_1 : Callable, f_2 : Callable, m_1 : float, m_2 : float):
+        """Returns an array of mass fractions for a linear transition between two functions.
+        
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        f_1 : Callable
+            function for the first part of the transition
+        f_2 : Callable
+            function for the second part of the transition
+        m_1 : float
+            mass at which the transition starts
+        m_2 : float
+            mass at which the transition ends
+        """
+        f_transition = lambda m: f_1(m) * (1 - (m - m_1)/(m_2 - m_1)) + f_2(m) * (m - m_1)/(m_2 - m_1)
+        
+        return CompositionalGradient._transition_function(m, f_transition, f_1, f_2, m_1, m_2)
+    
+    @staticmethod
+    def cosine_transition(m : np.ndarray, f_1 : Callable, f_2 : Callable, m_1 : float, m_2 : float):
+        """Returns an array of mass fractions for a cosine transition between two functions.
+        
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        f_1 : Callable
+            function for the first part of the transition
+        f_2 : Callable
+            function for the second part of the transition
+        m_1 : float
+            mass at which the transition starts
+        m_2 : float
+            mass at which the transition ends
+        """
+
+        # transition function
+        f_transition = lambda m: f_1(m) * 1/2 * (1 + np.cos(np.pi*(m-m_1)/(m_2-m_1))) + f_2(m) * (1 - 1/2 * (1 + np.cos(np.pi*(m-m_1)/(m_2-m_1))))
+        
+        return CompositionalGradient._transition_function(m, f_transition, f_1, f_2, m_1, m_2)
+    
+    @staticmethod
+    def cubic_transition(m : np.ndarray, f_1 : Callable, f_2 : Callable, m_1 : float, m_2 : float):
+        """Returns an array of mass fractions for a cubic transition between the two functions `f_1` and `f_2`, where `f_1`'s contribution decreases more slowly.
+        
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        f_1 : Callable
+            function for the first part of the transition
+        f_2 : Callable
+            function for the second part of the transition
+        m_1 : float
+            mass at which the transition starts
+        m_2 : float
+            mass at which the transition ends
+        """
+
+        # transition function
+        f_transition = lambda m: f_1(m) * (1 - np.power(((m - m_1)/(m_2 - m_1)), 3)) + f_2(m) * np.power((m - m_1)/(m_2 - m_1), 3)
+        
+        return CompositionalGradient._transition_function(m, f_transition, f_1, f_2, m_1, m_2)
+    
+    @staticmethod
+    def cubic_transition_fast_decrease(m : np.ndarray, f_1 : Callable, f_2 : Callable, m_1 : float, m_2 : float):
+        """Returns an array of mass fractions for a cubic transition between the two functions `f_1` and `f_2`, where `f_1`'s contribution decreases more rapidly.
+        
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        f_1 : Callable
+            function for the first part of the transition
+        f_2 : Callable
+            function for the second part of the transition
+        m_1 : float
+            mass at which the transition starts
+        m_2 : float
+            mass at which the transition ends
+        """
+
+        # transition function
+        f_transition = lambda m: f_1(m) * np.power(1 - ((m - m_1)/(m_2 - m_1)), 3) + f_2(m) * (1-np.power(1 - ((m - m_1)/(m_2 - m_1)), 3))
+        
+        return CompositionalGradient._transition_function(m, f_transition, f_1, f_2, m_1, m_2)
+    
+    @staticmethod
+    def exponential_transition(m : np.ndarray, f_1 : Callable, f_2 : Callable, m_1 : float, m_2 : float, alpha : float = -1):
+        """Returns an array of mass fractions for an exponential transition between the two functions `f_1` and `f_2`.
+        
+        Parameters
+        ----------
+        m : np.ndarray
+            array of mass bins
+        f_1 : Callable
+            function for the first part of the transition
+        f_2 : Callable
+            function for the second part of the transition
+        m_1 : float
+            mass at which the transition starts
+        m_2 : float
+            mass at which the transition ends
+        """
+
+        # transition function
+        # scaling from x = 0 to x = 1
+        scaling_factor = lambda x: (np.exp(alpha) - np.exp(alpha * x)) / (np.exp(alpha) - 1)
+
+        f_transition = lambda m: f_1(m) * scaling_factor((m-m_1)/(m_2-m_1)) + f_2(m) * (1-scaling_factor((m-m_1)/(m_2-m_1)))
+        
+        return CompositionalGradient._transition_function(m, f_transition, f_1, f_2, m_1, m_2)
+    
+ 
+    

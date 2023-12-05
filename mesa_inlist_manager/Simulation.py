@@ -1,6 +1,5 @@
 # class for anything related to after the simulation has been run
 # for example, analyzing, plotting, saving, etc.
-from turtle import st
 import matplotlib.pyplot as plt
 import os
 import numpy as np

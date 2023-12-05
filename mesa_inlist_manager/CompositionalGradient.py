@@ -433,6 +433,9 @@ class CompositionalGradient:
             raise Exception("m_1 needs to be >= 0")
         elif any(n < 0 for n in m):
             raise Exception("m should contain positive numbers only")
+        elif m_2 == m_1:
+            print("Note: m_2 = m_1. A piecewise function is returned.")
+            return np.piecewise(m, [m < m_1, m >= m_1], [f_1, f_2])
         
         return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [f_1, f_transition , f_2])
 

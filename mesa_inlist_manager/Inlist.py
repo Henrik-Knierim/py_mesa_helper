@@ -203,7 +203,7 @@ class Inlist:
         """
         logs_path = Inlist.create_logs_path_string(**kwargs)
         self.set_option('log_directory', logs_path)
-
+    
     def set_initial_mass_in_M_Jup(self, M_p_in_M_J:float) -> None:
         M_p_in_g = M_Jup_in_g*M_p_in_M_J
         self.set_option('mass_in_gm_for_create_initial_model', M_p_in_g)
@@ -294,14 +294,37 @@ class Inlist:
                     return False
                 else:
                     return x
-                
+    
+    # define subroutines for creating paths to logs directories
     @staticmethod
-    def create_logs_path_string(logs_src: str = "LOGS", logs_style = None, **kwargs)->None:
+    def _from_style_to_string(style, value) -> str:
+        """Converts a style and a value to a string."""
+        if isinstance(value, str):
+            return f'{style}_{value}'
+        else:
+            return f'{style}_{value:.2f}'
+        
+    @staticmethod
+    def _from_styles_to_string(styles, **kwargs) -> str:
+        """Converts a list of styles and a list of values to a string."""
+        out = ''
+        for style in styles:
+            style_value = kwargs.get(style, None)
+            if style_value is None:
+                raise ValueError(f"{style} must be given if logs_style is {styles}")
+
+            out += Inlist._from_style_to_string(style, style_value) + '_' # add underscore to separate styles
+   
+        return out[:-1]
+
+    @staticmethod
+    def create_logs_path_string(logs_src: str = "LOGS", suite_dir = '', suite_style = None, logs_style = None, **kwargs)->None:
         """
         Returns the path to the logs directory.
 
         Parameters:
             logs_src (str): The parent directory for logs. Default is "LOGS".
+            suite_dir (str): The parent directory for the suite. Default is "".
             logs_style: Style of logs. Can be None, str, or list.
                 - If None, the 'logs_name' keyword argument must be provided.
                 - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided.
@@ -364,6 +387,15 @@ class Inlist:
             LOGS/initial_mass_1.0_metallicity_0.02
         """
 
+        # define custom suite_dir if suite_style is given
+        if isinstance(suite_style, list):
+            suite_dir = Inlist._from_styles_to_string(suite_style, **kwargs)
+        elif isinstance(suite_style, str):
+            suite_dir = Inlist._from_styles_to_string([suite_style], **kwargs)
+        else:
+            suite_dir = suite_dir
+
+
         if logs_style is None:
             # get logs_name
             logs_name = kwargs.get('logs_name', None)
@@ -409,20 +441,12 @@ class Inlist:
             logs_name = f'{logs_style}_{kwargs.get(logs_style, None):.2f}'
         
         elif isinstance(logs_style, list):
-            logs_name = ''
-            for style in logs_style:
-                logs_value = kwargs.get(style, None)
-                if logs_value is None:
-                    raise ValueError(f"{style} must be given if logs_style is {logs_style}")
-                
-                logs_name += f'{style}_{logs_value:.2f}_'
-            
-            logs_name = logs_name[:-1]
-            
+            logs_name = Inlist._from_styles_to_string(logs_style, **kwargs)
+
         else:
-            raise ValueError("logs_style must be None, str or list")
+            raise ValueError(f"logs_style must be None, str, or list. Got {logs_style}.")
         
-        logs_path = os.path.join(logs_src, logs_name)
+        logs_path = os.path.join(logs_src, suite_dir, logs_name)
 
         return logs_path
     
@@ -533,7 +557,7 @@ class Inlist:
             raise ValueError("n_points must be at least 1.")
         
         # create list of mass and entropy values
-        s_list = Simulation._create_relax_entropy_list(s_of_m_kerg, n_points)
+        s_list = Inlist._create_relax_entropy_list(s_of_m_kerg, n_points)
 
         with open(relax_entropy_filename, 'w') as file:
             # write header: number of points

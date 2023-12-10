@@ -1,3 +1,4 @@
+import os
 class rn:
     """Modifies rn-files"""
 
@@ -9,6 +10,14 @@ class rn:
         # save rn file to restore later
         with open(self.name, 'r') as file:
             self.original_rn_script = file.read()
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        
+        # restore original inlist
+        self.restore_rn()
 
     def restore_rn(self):
         """Restores run script to original version."""
@@ -52,3 +61,7 @@ class rn:
             file.writelines(lines)
 
         print(f"Set mod-file name to {mod_file_name}")
+
+    def run(self):
+        """Runs the rn-script"""
+        os.system(f'./{self.name}')

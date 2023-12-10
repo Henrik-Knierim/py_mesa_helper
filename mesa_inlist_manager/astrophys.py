@@ -17,9 +17,6 @@ M_Sol_in_Earth = 3.329e-5
 L_Sol_in_erg_s = 3.828e33
 
 # abundances
-
-
-
 Z_Sol = 0.0174064       # proto-solar values accoding to Lodders21
 Y_Sol = 0.276522        # proto-solar values according to Lodders21
 X_Sol = 1 - Y_Sol - Z_Sol
@@ -69,6 +66,9 @@ def heterogeneity(f, x_min: float, x_max: float):
 # <<< math functions <<<
 
 # >>> astro functions >>>
+
+def from_Jupiter_to_Solar_mass(mass):
+    return mass * M_Jup_in_Sol
 
 
 def from_flux_to_equilibrium_temperature(flux):

@@ -43,7 +43,11 @@ class Simulation:
         self.n_simulations = len(self.histories)
 
         # add the simulation parameters to self.results
-        self.results = pd.DataFrame({'log_dir': self.log_dirs})
+        if suite != '':
+            self.results = pd.DataFrame({'log_dir': self.log_dirs})
+        
+        if self.sim != '':
+            self.results = pd.DataFrame({'log_dir': [self.sim]})
 
     def _init_mesa_logs(self) -> None:
         """Initialzes `MesaLogDir` objects for each log directory in the simulation."""

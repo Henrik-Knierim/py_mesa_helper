@@ -49,6 +49,13 @@ class Simulation:
         if self.sim != '':
             self.results = pd.DataFrame({'log_dir': [self.sim]})
 
+    # create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite
+    def __str__(self):
+        if self.suite != '':
+            return self.suite
+        else:
+            return self.sim
+
     def _init_mesa_logs(self) -> None:
         """Initialzes `MesaLogDir` objects for each log directory in the simulation."""
         self.logs = {}

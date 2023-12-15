@@ -35,9 +35,14 @@ class Simulation:
 
 
         # import sim results
+        # first, delete horribly failed simulations
+        self.delete_horribly_failed_simulations()
+        # then, initialize the mesa logs and histories
         self._init_mesa_logs()
         self._init_mesa_histories()
-        # delete simulations that do not converge
+        
+        # delete simulations that do not converge to the final age
+        # these did not fail horribly, but they did not converge to the final age
         self.remove_non_converged_simulations(final_age)
 
         self.n_simulations = len(self.histories)
@@ -55,7 +60,7 @@ class Simulation:
             return self.suite
         else:
             return self.sim
-
+    
     def _init_mesa_logs(self) -> None:
         """Initialzes `MesaLogDir` objects for each log directory in the simulation."""
         self.logs = {}
@@ -66,7 +71,7 @@ class Simulation:
             self.log = self.logs[self.sim]
 
         else:
-            for log_dir in self.log_dirs:
+            for log_dir in self.log_dirs:              
                 self.logs[log_dir] = mr.MesaLogDir(os.path.join(self.suite_dir, log_dir))
 
     def _init_mesa_histories(self) -> None:
@@ -114,6 +119,21 @@ class Simulation:
     # ------------------------------ #
     # --- Simulation Convergence --- #
     # ------------------------------ #
+
+    @staticmethod
+    def _is_profile_index_valid(path_to_profile_index):
+        """Returns True if profiles.index contains more than 2 lines."""
+        with open(path_to_profile_index, 'r') as f:
+            lines = f.readlines()
+        return len(lines) > 2
+
+    def delete_horribly_failed_simulations(self):
+        """Deletes all simulations that have a profiles.index file with less than 2 lines."""
+        for log_dir in self.log_dirs:
+            path_to_profile_index = os.path.join(self.suite_dir, log_dir, 'profiles.index')
+            if not self._is_profile_index_valid(path_to_profile_index):
+                os.system(f'rm -r {os.path.join(self.suite_dir, log_dir)}')
+                self.log_dirs.remove(log_dir)
 
     def has_conserved_mass_fractions(self, tol = 1e-3, starting_model = 0, final_model = -1) -> bool:
         """Checks if the simulation has conserved mass fractions to a certain tolerance"""
@@ -165,14 +185,38 @@ class Simulation:
     # ------------------------------ #
     # ----- Simulation Results ----- #
     # ------------------------------ #
-    def add_history_data(self, history_keys, model = -1):
+    def add_history_data(self, history_keys, model = -1, age = None):
         """Adds `history_key` to `self.results`."""
         if type(history_keys) != list:
             history_keys = [history_keys]
         
-        for history_key in history_keys:
-            out = [self.histories[log_key].data(history_key)[model] for log_key in self.results['log_dir']]
-            self.results[history_key] = out
+        if age is None:
+            if model == -1:
+                # add the final model
+                for history_key in history_keys:
+                    out = [self.histories[log_key].data(history_key)[model] for log_key in self.results['log_dir']]
+                    self.results[history_key] = out
+            elif isinstance(model, int):
+                for history_key in history_keys:
+                    out = [self.histories[log_key].data_at_model_number(history_key, model) for log_key in self.results['log_dir']]
+                    self.results[history_key] = out
+            else:
+                raise TypeError('model must be an integer')
+            
+        elif isinstance(age, (int, float)):
+            # find the model number closest to the age
+            for history_key in history_keys:
+                out = np.zeros(len(self.results['log_dir']))
+                for i, log_key in enumerate(self.results['log_dir']):
+                    ages = self.histories[log_key].data('star_age')
+                    parameter = self.histories[log_key].data(history_key)
+                    model = np.argmin(np.abs(ages - age))
+                    out[i] = parameter[model]
+                self.results[history_key] = out
+
+
+        else:
+            raise TypeError('age must be None or a float')
     
     @staticmethod
     def integrate_profile(profile, quantity, m0 = 0, m1 = 1):

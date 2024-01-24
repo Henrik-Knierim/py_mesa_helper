@@ -1,65 +1,76 @@
 # class for anything related to after the simulation has been run
 # for example, analyzing, plotting, saving, etc.
+from ast import Raise
 import matplotlib.pyplot as plt
 import os
 import numpy as np
 import mesa_reader as mr
 import pandas as pd
+from zmq import has
 from mesa_inlist_manager.astrophys import M_Jup_in_g, specific_entropy
+from scipy.interpolate import interp1d
 
 class Simulation:
     """Class for anything related to after the simulation has been run. For example, analyzing, plotting, saving, etc."""
 
-    def __init__(self, parent_dir = './LOGS', suite = '', sim = '', final_age = 5e9) -> None:
+    def __init__(self, parent_dir : str = './LOGS', suite : str = '', sim : str = '', check_age_convergence = True,**kwargs) -> None:
         
         # parent directory of the simulation
         self.parent_dir = parent_dir
 
         # simulation suite (if any)
-        self.suite = suite
+        if suite != '':
+            self.suite = suite
 
         # simulation (if any)
-        self.sim = sim
+        if sim != '':
+            self.sim = sim
 
         # full relative path to the suite and simulation
         self.suite_dir = os.path.join(self.parent_dir, self.suite)
         
-        if suite != '':
+        if hasattr(self, 'suite'):
             self.log_dirs = os.listdir(self.suite_dir)
             # sort the log directories
             # maybe you need to modify this if you have multiple suite parameters
             self.log_dirs.sort()
 
-        if self.sim != '':
+        if hasattr(self, 'sim'):
             self.sim_dir = os.path.join(self.suite_dir, self.sim)
 
 
         # import sim results
         # first, delete horribly failed simulations
         self.delete_horribly_failed_simulations()
+        
         # then, initialize the mesa logs and histories
         self._init_mesa_logs()
         self._init_mesa_histories()
         
         # delete simulations that do not converge to the final age
         # these did not fail horribly, but they did not converge to the final age
-        self.remove_non_converged_simulations(final_age)
+        if check_age_convergence:
+            final_age = kwargs.get('final_age', 5e9)
+            self.remove_non_converged_simulations(final_age)
 
         self.n_simulations = len(self.histories)
 
         # add the simulation parameters to self.results
-        if suite != '':
+        if hasattr(self, 'suite'):
             self.results = pd.DataFrame({'log_dir': self.log_dirs})
         
-        if self.sim != '':
+        if hasattr(self, 'sim'):
             self.results = pd.DataFrame({'log_dir': [self.sim]})
 
     # create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite
     def __str__(self):
-        if self.suite != '':
+        if hasattr(self, 'suite'):
             return self.suite
-        else:
+    
+        elif hasattr(self, 'sim'):
             return self.sim
+        else:
+            Raise(NotImplementedError('The simulation does not have a suite or a simulation.'))
     
     def _init_mesa_logs(self) -> None:
         """Initialzes `MesaLogDir` objects for each log directory in the simulation."""
@@ -129,11 +140,20 @@ class Simulation:
 
     def delete_horribly_failed_simulations(self):
         """Deletes all simulations that have a profiles.index file with less than 2 lines."""
-        for log_dir in self.log_dirs:
-            path_to_profile_index = os.path.join(self.suite_dir, log_dir, 'profiles.index')
+        
+        if hasattr(self, 'log_dirs'):
+            for log_dir in self.log_dirs:
+                path_to_profile_index = os.path.join(self.suite_dir, log_dir, 'profiles.index')
+                if not self._is_profile_index_valid(path_to_profile_index):
+                    os.system(f'rm -r {os.path.join(self.suite_dir, log_dir)}')
+                    self.log_dirs.remove(log_dir)
+                    
+        else:
+            path_to_profile_index = os.path.join(self.sim_dir, 'profiles.index')
             if not self._is_profile_index_valid(path_to_profile_index):
-                os.system(f'rm -r {os.path.join(self.suite_dir, log_dir)}')
-                self.log_dirs.remove(log_dir)
+                os.system(f'rm -r {self.sim_dir}')
+                self.sim = ''
+                self.log_dirs.remove(self.sim)
 
     def has_conserved_mass_fractions(self, tol = 1e-3, starting_model = 0, final_model = -1) -> bool:
         """Checks if the simulation has conserved mass fractions to a certain tolerance"""
@@ -219,7 +239,7 @@ class Simulation:
             raise TypeError('age must be None or a float')
     
     @staticmethod
-    def integrate_profile(profile, quantity, m0 = 0, m1 = 1):
+    def integrate_profile(profile, quantity : str, m0 : float = 0.0, m1 : float = 1.0):
         """Integrates the profile quantity from m0 to m1 in Jupiter masses."""
         m_Jup = profile.data('mass_Jup')
         dm = profile.data('dm')[(m0 < m_Jup)&(m_Jup<m1)]/M_Jup_in_g
@@ -227,7 +247,7 @@ class Simulation:
         return np.dot(dm, quantity)
     
     @staticmethod
-    def mean_profile_value(profile, quantity, m0 = 0, m1 = 1):
+    def mean_profile_value(profile, quantity, m0 : float = 0., m1 : float = 1.):
         """Integrates the profile quantity from m0 to m1 in Jupiter masses."""
         m_Jup = profile.data('mass_Jup')
         dm = profile.data('dm')[(m0 < m_Jup)&(m_Jup<m1)]/M_Jup_in_g
@@ -235,7 +255,7 @@ class Simulation:
         return np.dot(dm, quantity)/np.sum(dm)
 
     
-    def add_integrated_profile_data(self, quantity, m0 = 0, m1 = 1, profile_number = -1, name = None):
+    def add_integrated_profile_data(self, quantity : str, m0 : float = 0.0, m1 : float = 1.0, profile_number : int = -1, name = None):
         """Integrates the profile quantity from m0 to m1 and adds it to `self.results`."""
         if name is None:
             integrated_quantity_key = 'integrated_'+quantity
@@ -246,29 +266,112 @@ class Simulation:
         self.results[integrated_quantity_key] = out
 
         
-    def add_mean_profile_data(self, quantity, m0 = 0, m1 = 1, profile_number = -1, name = None):
+    def add_mean_profile_data(self, quantity : str, m0 : float = 0.0, m1 : float = 1.0, profile_number : int = -1, name = None):
         """Computes the mean of the profile quantity from m0 to m1 and adds it to `self.results`."""
         
         if name is None:
-            integrated_quantity_key = 'integrated_'+quantity
+            integrated_quantity_key = 'mean_'+quantity
         else:
             integrated_quantity_key = name
         
         out = [Simulation.mean_profile_value(self.logs[log_key].profile_data(profile_number = profile_number), quantity, m0, m1) for log_key in self.results['log_dir']]
         self.results[integrated_quantity_key] = out
 
+    def get_profile_data(self, quantity : str, profile_number : int = -1, log_dir = None, **kwargs) -> np.ndarray:
+        """Returns the profile data for `quantity`. Currently only supported for one simulation."""
+        
+        if hasattr(self, 'sim'):
+            return self.logs[self.sim].profile_data(profile_number = profile_number, **kwargs).data(quantity)
+        
+        elif hasattr(self, 'suite'):
+            if log_dir is None:
+                raise ValueError('log_dir must be specified.')
+            else:
+                return self.logs[log_dir].profile_data(profile_number = profile_number, **kwargs).data(quantity)
+            
+        else:
+            raise NotImplementedError("The method 'get_profile_data' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
+        
+    def interpolate_profile_data(self, x : str, y : str, profile_number : int = -1, **kwargs):
+        """Creates an interpolation function for (x,y) at `self.interpolation[log,x,y]`."""
+        
+        # create the interpolation dictionary if it does not exist
+        if not hasattr(self, 'interpolation'):
+            self.interpolation = {}
+
+        for log_key in self.logs:
+            profile = self.logs[log_key].profile_data(profile_number = profile_number)
+            x_data = profile.data(x)
+            y_data = profile.data(y)
+            self.interpolation[log_key,x,y] = interp1d(x_data, y_data, **kwargs)
+
+    def get_relative_difference_of_two_profiles(self, x : str, y : str, profile_number : int = -1, log_reference = None, log_compare = None, **kwargs):
+        """Returns the relative difference of two profiles.
+        
+        Parameters
+        ----------
+        x : str
+            The x-axis of the profile.
+        y : str
+            The y-axis of the profile.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        log_reference : str, optional
+            The reference log. The default is None.
+        log_compare : str, optional
+            The log that is compared to the reference log. The default is None.
+        **kwargs : dict
+            Keyword arguments for `scipy.interpolate.interp1d`.
+        """
+        
+        # check whether the interpolation dictionary with [log,x,y] exists
+        # if not, create it
+        for log in [log_reference, log_compare]:
+            # first, check whether `self.interpolation` exists and create it if it does not
+            if not hasattr(self, 'interpolation'):
+                self.interpolate_profile_data(x, y, profile_number = profile_number, **kwargs)
+            
+            # then, check whether the specific interpolation exists and create it if it does not
+            elif self.interpolation.get((log, x, y)) is None:
+                self.interpolate_profile_data(x, y, profile_number = profile_number, **kwargs)
+
+        # get the x range
+        # the minimum is the smallest common x value of the reference and compare log
+        x_min = max(self.get_profile_data(quantity = x, profile_number=profile_number, log_dir = log_reference).min(), self.get_profile_data(quantity = x, profile_number=profile_number, log_dir = log_compare).min())
+
+        # the maximum is the largest common x value of the reference and compare log
+        x_max = min(self.get_profile_data(quantity = x, profile_number=profile_number, log_dir = log_reference).max(), self.get_profile_data(quantity = x, profile_number=profile_number, log_dir = log_compare).max())
+
+        x_values = np.linspace(x_min, x_max, 1000)
+        
+        if hasattr(self, 'suite'):
+            if log_reference is None or log_compare is None:
+                raise ValueError('log_reference and log_compare must be specified.')
+            else:
+                y_reference = self.interpolation[log_reference,x,y](x_values)
+                y_compare = self.interpolation[log_compare,x,y](x_values)
+                return x_values, (y_compare - y_reference)/y_reference
+        else:
+            raise NotImplementedError("The method 'get_relative_difference_of_two_profiles' is currently only supported for a suite of simulations where the log_reference and log_compare are specified.")
+            
     # ------------------------------ #
     # -------- Plot Results -------- #
     # ------------------------------ #
 
-    def profile_plot(self, x, y, profile_number = -1, ax = None, **kwargs):
+    def profile_plot(self, x, y, profile_number = -1, ax = None, set_labels = False, **kwargs):
         """Plots the profile data with (x, y) as the axes at `profile_number`."""
         if ax is None:
             fig, ax = plt.subplots()
         
         for log_key in self.logs:
             profile = self.logs[log_key].profile_data(profile_number = profile_number)
+            
+            # set the label (optional)
+            if set_labels:
+                kwargs['label'] = log_key
+
             ax.plot(profile.data(x), profile.data(y), **kwargs)
+            
         
         ax.set(xlabel = x, ylabel = y)
         return ax
@@ -284,6 +387,18 @@ class Simulation:
         
         ax.set(xlabel = x, ylabel = y)
         return ax
+    
+    def relative_difference_of_two_profiles_plot(self, x, y, profile_number = -1, log_reference = None, log_compare = None, ax = None, **kwargs):
+        """Plots the relative difference of two profiles with (x, y) as the axes."""
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        x_values, y_values = self.get_relative_difference_of_two_profiles(x, y, profile_number = profile_number, log_reference = log_reference, log_compare = log_compare, **kwargs)
+        ax.plot(x_values, y_values, label = y)
+        
+        ax.set(xlabel = x, ylabel = 'Relative difference')
+        return ax
+        
     
     # ------------------------------ #
     # ------- Static Methods ------- #

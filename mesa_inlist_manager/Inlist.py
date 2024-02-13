@@ -1,5 +1,6 @@
 import os
 import re
+import stat
 import numpy as np
 from mesa_inlist_manager.astrophys import *
 from typing import Callable
@@ -56,9 +57,15 @@ class Inlist:
         return False
     
     @staticmethod
-    def _is_x_ctrl(string):
+    def _is_x_ctrl(string) -> bool:
         """Check if a string is in the form 'x_ctrl(i)', where i is an integer between 1 and 99."""
         pattern = r'^x_ctrl\((?:[1-9]|[1-9][0-9])\)$'
+        return bool(re.match(pattern, string))
+    
+    @staticmethod
+    def _is_x_logical_ctrl(string) -> bool:
+        """Check if a string is in the form 'x_logical_ctrl(i)', where i is an integer between 1 and 99."""
+        pattern = r'^x_logical_ctrl\((?:[1-9]|[1-9][0-9])\)$'
         return bool(re.match(pattern, string))
 
     def _get_section_of_option(self, option : str):
@@ -70,6 +77,8 @@ class Inlist:
         elif self._optionQ('pgstar', option):
             return '&pgstar'
         elif Inlist._is_x_ctrl(option): # x_ctrl(i) is a special case not covered by the defaults files
+            return '&controls'
+        elif Inlist._is_x_logical_ctrl(option): # x_logical_ctrl(i) is a special case not covered by the defaults files
             return '&controls'
         else:
             raise ValueError(f'Option {option} not found in MESA {self.version}.')

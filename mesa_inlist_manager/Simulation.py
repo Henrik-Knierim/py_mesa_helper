@@ -6,14 +6,27 @@ import os
 import numpy as np
 import mesa_reader as mr
 import pandas as pd
-from zmq import has
-from mesa_inlist_manager.astrophys import M_Jup_in_g, specific_entropy
+from mesa_inlist_manager.astrophys import M_Jup_in_g
 from scipy.interpolate import interp1d
 
 class Simulation:
     """Class for anything related to after the simulation has been run. For example, analyzing, plotting, saving, etc."""
 
     def __init__(self, parent_dir : str = './LOGS', suite : str = '', sim : str = '', check_age_convergence = True,**kwargs) -> None:
+        """Initializes the Simulation object.
+        Parameters
+        ----------
+        parent_dir : str, optional
+            The parent directory of the simulation. The default is './LOGS'.
+        suite : str, optional
+            The simulation suite. The default is ''.
+        sim : str, optional
+            The simulation. The default is ''.
+        check_age_convergence : bool, optional
+            If True, then the simulations that do not converge to the final age are removed. The default is True.
+        **kwargs : dict
+            Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.
+        """
         
         # parent directory of the simulation
         self.parent_dir = parent_dir
@@ -21,13 +34,14 @@ class Simulation:
         # simulation suite (if any)
         if suite != '':
             self.suite = suite
+            # full relative path to the suite and simulation
+            self.suite_dir = os.path.join(self.parent_dir, self.suite)
 
         # simulation (if any)
         if sim != '':
             self.sim = sim
 
-        # full relative path to the suite and simulation
-        self.suite_dir = os.path.join(self.parent_dir, self.suite)
+
         
         if hasattr(self, 'suite'):
             self.log_dirs = os.listdir(self.suite_dir)
@@ -36,7 +50,7 @@ class Simulation:
             self.log_dirs.sort()
 
         if hasattr(self, 'sim'):
-            self.sim_dir = os.path.join(self.suite_dir, self.sim)
+            self.sim_dir = os.path.join(self.parent_dir, self.sim)
 
 
         # import sim results
@@ -293,19 +307,21 @@ class Simulation:
             raise NotImplementedError("The method 'get_profile_data' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
         
     def interpolate_profile_data(self, x : str, y : str, profile_number : int = -1, **kwargs):
-        """Creates an interpolation function for (x,y) at `self.interpolation[log,x,y]`."""
+        """Creates an interpolation function for (x,y) at `self.interpolation[log, profile_number, x, y]`."""
         
         # create the interpolation dictionary if it does not exist
         if not hasattr(self, 'interpolation'):
             self.interpolation = {}
 
         for log_key in self.logs:
-            profile = self.logs[log_key].profile_data(profile_number = profile_number)
-            x_data = profile.data(x)
-            y_data = profile.data(y)
-            self.interpolation[log_key,x,y] = interp1d(x_data, y_data, **kwargs)
+            # if the interpolation does not exist, create it
+            if self.interpolation.get((log_key, profile_number, x, y)) is None:
+                profile = self.logs[log_key].profile_data(profile_number = profile_number)
+                x_data = profile.data(x)
+                y_data = profile.data(y)
+                self.interpolation[log_key,profile_number,x,y] = interp1d(x_data, y_data, **kwargs)
 
-    def get_relative_difference_of_two_profiles(self, x : str, y : str, profile_number : int = -1, log_reference = None, log_compare = None, **kwargs):
+    def get_relative_difference_of_two_profiles_from_two_logs(self, x : str, y : str, profile_number : int = -1, log_reference = None, log_compare = None, **kwargs):
         """Returns the relative difference of two profiles.
         
         Parameters
@@ -324,16 +340,9 @@ class Simulation:
             Keyword arguments for `scipy.interpolate.interp1d`.
         """
         
-        # check whether the interpolation dictionary with [log,x,y] exists
-        # if not, create it
-        for log in [log_reference, log_compare]:
-            # first, check whether `self.interpolation` exists and create it if it does not
-            if not hasattr(self, 'interpolation'):
-                self.interpolate_profile_data(x, y, profile_number = profile_number, **kwargs)
-            
-            # then, check whether the specific interpolation exists and create it if it does not
-            elif self.interpolation.get((log, x, y)) is None:
-                self.interpolate_profile_data(x, y, profile_number = profile_number, **kwargs)
+        # call the interpolation routine
+        # if the interpolation object for [log, profile_number, x, y] already exists, then it is not created by the interpolation routine
+        self.interpolate_profile_data(x, y, profile_number = profile_number, **kwargs)
 
         # get the x range
         # the minimum is the smallest common x value of the reference and compare log
@@ -348,12 +357,61 @@ class Simulation:
             if log_reference is None or log_compare is None:
                 raise ValueError('log_reference and log_compare must be specified.')
             else:
-                y_reference = self.interpolation[log_reference,x,y](x_values)
-                y_compare = self.interpolation[log_compare,x,y](x_values)
+                y_reference = self.interpolation[log_reference, profile_number, x,y](x_values)
+                y_compare = self.interpolation[log_compare, profile_number, x,y](x_values)
                 return x_values, (y_compare - y_reference)/y_reference
         else:
             raise NotImplementedError("The method 'get_relative_difference_of_two_profiles' is currently only supported for a suite of simulations where the log_reference and log_compare are specified.")
             
+    def get_relative_difference_of_two_profiles_from_one_log(self, x : str, y : str, profile_number_reference : int = -1, profile_number_compare : int = -1, log = None, **kwargs):
+        """Returns the relative difference of two profiles.
+
+        Parameters
+        ----------
+        x : str
+            The x-axis of the profile.
+        y : str
+            The y-axis of the profile.
+        profile_number_reference : int, optional
+            The reference profile number. The default is -1.
+        profile_number_compare : int, optional
+            The profile number that is compared to the reference profile. The default is -1.
+        log : str, optional
+            The log. The default is None.
+        **kwargs : dict
+            Keyword arguments for `scipy.interpolate.interp1d`.
+        """
+            
+        # make sure the interpolation object for [log, profile_number, x, y] exists
+        self.interpolate_profile_data(x, y, profile_number = profile_number_reference, **kwargs)
+        self.interpolate_profile_data(x, y, profile_number = profile_number_compare, **kwargs)
+
+        # if sim exists, then there is only one log directory
+        # hence, we can define log
+        if hasattr(self, 'sim') and log is None:            
+            log = self.sim
+        # check whether log is a valid log directory
+        elif log not in self.log_dirs:
+            raise ValueError('log must be a valid log directory.')
+
+            
+
+        # get the x range
+        # the minimum is the smallest common x value of the reference and compare log
+        x_min = max(self.get_profile_data(quantity = x, profile_number=profile_number_reference, log_dir = log).min(), self.get_profile_data(quantity = x, profile_number=profile_number_compare, log_dir = log).min())
+
+        # the maximum is the largest common x value of the reference and compare log
+        x_max = min(self.get_profile_data(quantity = x, profile_number=profile_number_reference, log_dir = log).max(), self.get_profile_data(quantity = x, profile_number=profile_number_compare, log_dir = log).max())
+
+        x_values = np.linspace(x_min, x_max, 1000)
+
+        if log is not None:
+            y_reference = self.interpolation[log,profile_number_reference,x,y](x_values)
+            y_compare = self.interpolation[log,profile_number_compare,x,y](x_values)
+            return x_values, (y_compare - y_reference)/y_reference
+        else:
+            raise ValueError('log must be specified.')
+        
     # ------------------------------ #
     # -------- Plot Results -------- #
     # ------------------------------ #
@@ -376,26 +434,63 @@ class Simulation:
         ax.set(xlabel = x, ylabel = y)
         return ax
     
-    def history_plot(self, x, y, ax = None, **kwargs):
+    def history_plot(self, x, y, ax = None, set_labels = False, **kwargs):
         """Plots the history data with (x, y) as the axes."""
         if ax is None:
             fig, ax = plt.subplots()
         
         for log_key in self.logs:
+            
+            # set the label (optional)
+            if set_labels:
+                kwargs['label'] = log_key
+
             history = self.histories[log_key]
-            ax.plot(history.data(x), history.data(y), **kwargs)
+            ax.plot(history.data(x), history.data(y), **kwargs) 
         
         ax.set(xlabel = x, ylabel = y)
         return ax
     
-    def relative_difference_of_two_profiles_plot(self, x, y, profile_number = -1, log_reference = None, log_compare = None, ax = None, **kwargs):
-        """Plots the relative difference of two profiles with (x, y) as the axes."""
+    def relative_difference_of_two_profiles_plot(self, x : str, y : str, profile_number_reference : int = -1, profile_number_compare : int = None, log_reference = None, log_compare = None, ax = None, **kwargs):
+        """Plots the relative difference of two profiles with (x, y) as the axes.
+        
+        The rountine either compares two profiles from the same log, or two profiles from two different logs.
+
+        Parameters
+        ----------
+        x : str
+            The x-axis of the profile.
+        y : str
+            The y-axis of the profile.
+        profile_number_reference : int, optional
+            The reference profile number. The default is -1.
+        profile_number_compare : int, optional
+            The profile number that is compared to the reference profile. The default is None.
+        log_reference : str, optional
+            The reference log. The default is None.
+        log_compare : str, optional
+            The log that is compared to the reference log. The default is None.
+        ax : matplotlib.axes, optional
+            The axes. The default is None.
+        **kwargs : dict
+            Keyword arguments for `matplotlib.pyplot.plot`.
+        """
+
         if ax is None:
             fig, ax = plt.subplots()
         
-        x_values, y_values = self.get_relative_difference_of_two_profiles(x, y, profile_number = profile_number, log_reference = log_reference, log_compare = log_compare, **kwargs)
-        ax.plot(x_values, y_values, label = y)
+        # in the routine, you either specify log_reference and log_compare, or profile_number_reference and profile_number_compare
+        # if both, profile_number_compare and log_compare are specified, then the routine raises an error
+        if profile_number_compare is not None and log_compare is not None:
+            raise ValueError('profile_number_compare and log_compare cannot be specified at the same time.')
+        elif profile_number_compare is not None:
+            x_values, y_values = self.get_relative_difference_of_two_profiles_from_one_log(x, y, profile_number_reference = profile_number_reference, profile_number_compare = profile_number_compare, log = log_reference, **kwargs)
+        elif log_compare is not None:
+            x_values, y_values = self.get_relative_difference_of_two_profiles_from_two_logs(x, y, profile_number = profile_number_reference, log_reference = log_reference, log_compare = log_compare, **kwargs)
+        else:
+            raise ValueError('profile_number_compare and log_compare cannot be both None.')
         
+        ax.plot(x_values, y_values, label = y)
         ax.set(xlabel = x, ylabel = 'Relative difference')
         return ax
         

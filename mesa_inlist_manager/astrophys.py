@@ -86,7 +86,13 @@ def scaled_solar_ratio_mass_fractions(Z)->list:
 def specific_entropy(entropy_in_kerg):
     return NA*kB*entropy_in_kerg
 
-
+# visible opacity fit from Guillot 2010
+def kappa_v_Guillot_2010(T_eq):
+    "Return the visible opacity in cm^2/g for a given equilibrium temperature."
+    kappa_0 = 6e-3
+    T_0 = 2000
+    T_irr = np.sqrt(2) * T_eq
+    return kappa_0 * np.sqrt(T_irr/T_0)
 
 # Compute the intial radius for an adiabatic model given the inital mass and center entropy
 

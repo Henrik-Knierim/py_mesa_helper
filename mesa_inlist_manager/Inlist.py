@@ -1,6 +1,5 @@
 import os
 import re
-import stat
 import numpy as np
 from mesa_inlist_manager.astrophys import *
 from typing import Callable
@@ -133,11 +132,8 @@ class Inlist:
                         # fortran formatting
                         out = Inlist.fortran_format(value)
 
-                        new_line = l.replace(
-                            line_splitted[1].strip(),
-                            out,
-                            1  # to change the value only
-                        )
+                        new_line = line_splitted[0] + separator + out + '\n'
+
                         break
 
             lines[index_option] = new_line

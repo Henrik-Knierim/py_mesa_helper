@@ -10,6 +10,9 @@ resources_dir = path.join(path.dirname(__file__), 'resources')
 sigma_SB = 5.670374e-5  # erg cm^-2 K^-4
 NA = 6.02214e23         # per mol
 kB = 1.38065e-16        # erg/K
+yr_in_s = 3.1536e7      # seconds
+s_in_yr = 1/yr_in_s     # years
+
 # Sun
 R_Sol_in_cm = 6.957e10
 M_Sol_in_g = 1.988435e33
@@ -80,6 +83,9 @@ def scaled_solar_ratio_mass_fractions(Z)->list:
     X = a * X_Sol
     Y = a * Y_Sol
     return [X, Y, Z]
+
+def diffusion_timescale(D : float, L : float)->float:
+    return L**2/D
 
 # converts kerg per baryon into specific entropy (erg/g/K)
 

@@ -280,7 +280,7 @@ class Simulation:
         self.results[integrated_quantity_key] = out
 
         
-    def add_mean_profile_data(self, quantity : str, m0 : float = 0.0, m1 : float = 1.0, profile_number : int = -1, name = None):
+    def add_mean_profile_data(self, quantity : str, m0 : float = 0.0, m1 : float = 1.0, profile_number : int = -1, model_number : int = -1, name = None):
         """Computes the mean of the profile quantity from m0 to m1 and adds it to `self.results`."""
         
         if name is None:
@@ -288,11 +288,11 @@ class Simulation:
         else:
             integrated_quantity_key = name
         
-        out = [Simulation.mean_profile_value(self.logs[log_key].profile_data(profile_number = profile_number), quantity, m0, m1) for log_key in self.results['log_dir']]
+        out = [Simulation.mean_profile_value(self.logs[log_key].profile_data(profile_number = profile_number, model_number=model_number), quantity, m0, m1) for log_key in self.results['log_dir']]
         self.results[integrated_quantity_key] = out
 
     def get_profile_data(self, quantity : str, profile_number : int = -1, log_dir = None, **kwargs) -> np.ndarray:
-        """Returns the profile data for `quantity`. Currently only supported for one simulation."""
+        """Returns the profile data for `quantity`."""
         
         if hasattr(self, 'sim'):
             return self.logs[self.sim].profile_data(profile_number = profile_number, **kwargs).data(quantity)
@@ -305,6 +305,18 @@ class Simulation:
             
         else:
             raise NotImplementedError("The method 'get_profile_data' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
+    def get_profile_header(self, data : str = "star_age", profile_number : int = -1, log_dir = None, **kwargs) -> list:
+        """Returns the profile header."""
+        
+        if hasattr(self, 'sim'):
+            return self.logs[self.sim].profile_data(profile_number = profile_number, **kwargs).header_data[data]
+        elif hasattr(self, 'suite'):
+            if log_dir is None:
+                raise ValueError('log_dir must be specified.')
+            else:
+                return self.logs[log_dir].profile_data(profile_number = profile_number, **kwargs).header_data[data]
+        else:
+            raise NotImplementedError("The method 'get_profile_header' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
         
     def interpolate_profile_data(self, x : str, y : str, profile_number : int = -1, **kwargs):
         """Creates an interpolation function for (x,y) at `self.interpolation[log, profile_number, x, y]`."""

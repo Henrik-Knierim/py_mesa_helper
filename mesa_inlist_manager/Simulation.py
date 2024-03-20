@@ -12,7 +12,7 @@ from scipy.interpolate import interp1d
 class Simulation:
     """Class for anything related to after the simulation has been run. For example, analyzing, plotting, saving, etc."""
 
-    def __init__(self, parent_dir : str = './LOGS', suite : str = '', sim : str = '', check_age_convergence = True,**kwargs) -> None:
+    def __init__(self, parent_dir : str = './LOGS', suite : str = '', sim : str = '', check_age_convergence = False, delete_horribly_failed_simulations = False, **kwargs) -> None:
         """Initializes the Simulation object.
         Parameters
         ----------
@@ -55,7 +55,7 @@ class Simulation:
 
         # import sim results
         # first, delete horribly failed simulations
-        self.delete_horribly_failed_simulations()
+        self.delete_horribly_failed_simulations() if delete_horribly_failed_simulations else None
         
         # then, initialize the mesa logs and histories
         self._init_mesa_logs()

@@ -16,7 +16,7 @@ setup(
 	long_description_content_type="text/markdown",
 	url="https://github.com/Henrik-Knierim/mesa_inlist_manager",
 	license='MIT',
-	python_requires='>=3.9',
+	python_requires='>=3.10',
 	install_requires=[
 		"mesa_reader>=0.3.0",
 		'numpy',

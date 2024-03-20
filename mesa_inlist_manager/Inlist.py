@@ -1,6 +1,7 @@
 import os
 import re
 import numpy as np
+import shutil
 from mesa_inlist_manager.astrophys import *
 from typing import Callable
 
@@ -8,22 +9,22 @@ class Inlist:
     """Class for reading and writing inlist files."""
     
     # keeps track of all instances of Inlist
-    instances = []
+    instances : list = []
 
-    def __init__(self, name, version = '23.05.1'):
+    def __init__(self, name : str, version : str = '23.05.1') -> None:
         """Initializes an Inlist object."""
         # add instance to list of instances
         self.instances.append(self)
 
         # name of the inlist file
-        self.name = name
+        self.name : str = name
 
         # version of MESA
-        self.version = version
+        self.version : str = version
 
         # backup original inlist
         with open(self.name, 'r') as file:
-                self.original_inlist = file.read()
+                self.original_inlist : str = file.read()
 
     def __str__(self):
         return f'Inlist({self.name})'
@@ -43,9 +44,9 @@ class Inlist:
 
     # checks section of the option
     
-    def _optionQ(self, section : str, option : str):
+    def _optionQ(self, section : str, option : str) -> bool:
         """Checks if the option is in the given section."""
-        src = path.join(resources_dir, self.version, f'{section}.defaults')
+        src : str = path.join(resources_dir, self.version, f'{section}.defaults')
         with open(src, 'r') as file:
             for line in file:
                     # remove whitespace
@@ -56,18 +57,18 @@ class Inlist:
         return False
     
     @staticmethod
-    def _is_x_ctrl(string) -> bool:
+    def _is_x_ctrl(string : str) -> bool:
         """Check if a string is in the form 'x_ctrl(i)', where i is an integer between 1 and 99."""
-        pattern = r'^x_ctrl\((?:[1-9]|[1-9][0-9])\)$'
+        pattern  : str = r'^x_ctrl\((?:[1-9]|[1-9][0-9])\)$'
         return bool(re.match(pattern, string))
     
     @staticmethod
-    def _is_x_logical_ctrl(string) -> bool:
+    def _is_x_logical_ctrl(string : str) -> bool:
         """Check if a string is in the form 'x_logical_ctrl(i)', where i is an integer between 1 and 99."""
-        pattern = r'^x_logical_ctrl\((?:[1-9]|[1-9][0-9])\)$'
+        pattern : str = r'^x_logical_ctrl\((?:[1-9]|[1-9][0-9])\)$'
         return bool(re.match(pattern, string))
 
-    def _get_section_of_option(self, option : str):
+    def _get_section_of_option(self, option : str) -> str:
         """Returns the section of an option."""
         if self._optionQ('controls', option):
             return '&controls'
@@ -82,36 +83,36 @@ class Inlist:
         else:
             raise ValueError(f'Option {option} not found in MESA {self.version}.')
 
-    def read_option(self, option: str):
+    def read_option(self, option: str) -> float| int | str | bool | None:
         """Reads the value of an option in an inlist file."""
         with open(self.name, 'r') as file:
-            lines = file.readlines()
+            lines : list[str] = file.readlines()
 
             for l in lines:
                 # pick out the line with the option
                 if l.strip().startswith(option):
 
-                    line_splitted = l.replace('!', '=')  # for ignoring fortran comments after the value
+                    line_replaced : str = l.replace('!', '=')  # for ignoring fortran comments after the value
 
-                    line_splitted = line_splitted.split('=')
+                    line_splitted : list[str] = line_replaced.split('=')
 
                     # python formatting
-                    out = line_splitted[1].strip()
+                    out : float | int | str | bool = line_splitted[1].strip()
 
-                    out = Inlist.python_format(out)
+                    out : float | int | str | bool = Inlist.python_format(out)
                     return out
 
         return None
     
     # finds existing option and changes it to the new value
 
-    def change_lines(self, option: str, value):
+    def change_lines(self, option: str, value) -> list[str]:
 
-        separator = "="
+        separator : str = "="
 
         with open(self.name, 'r') as file:
 
-            lines = file.readlines()
+            lines : list[str] = file.readlines()
 
             for i, l in enumerate(lines):
                 if option in l:
@@ -119,20 +120,20 @@ class Inlist:
                     # test if this is in fact the right option
 
                     # for ignoring fortran comments after the value
-                    line_splitted = l.replace('!', separator)
+                    line_replace : str = l.replace('!', separator)
 
                     # after split: 0:option, 1: value, 2: comment (if present)
-                    line_splitted = line_splitted.split(separator)
+                    line_splitted : list[str] = line_replace.split(separator)
 
                     # true if the occurence exactly matches with option
-                    is_option = line_splitted[0].strip() == option
+                    is_option : bool = line_splitted[0].strip() == option
                     if is_option:
-                        index_option = i
+                        index_option : int = i
 
                         # fortran formatting
-                        out = Inlist.fortran_format(value)
+                        out : str = Inlist.fortran_format(value)
 
-                        new_line = line_splitted[0] + separator + out + '\n'
+                        new_line : str = line_splitted[0] + separator + out + '\n'
 
                         break
 
@@ -141,19 +142,19 @@ class Inlist:
         return lines
 
     # create lines with new option
-    def _create_lines_explicit_section(self, section: str, option: str, value):
+    def _create_lines_explicit_section(self, section: str, option: str, value) -> list[str]:
         """Creates lines for a new option in an inlist file, where the section is explicitly given."""
         with open(self.name, 'r') as file:
 
-            lines = file.readlines()
+            lines : list[str] = file.readlines()
 
             # fortran formatting
-            out = Inlist.fortran_format(value)
+            out : str = Inlist.fortran_format(value)
 
             for i, l in enumerate(lines):
                 if section in l:
 
-                    index_section = i
+                    index_section : int = i
 
                     break
 
@@ -161,15 +162,15 @@ class Inlist:
 
         return lines
     
-    def create_lines(self, option : str, value):
+    def create_lines(self, option : str, value) -> list[str]:
         """Creates lines for a new option in an inlist file."""
 
-        section = self._get_section_of_option(option)
+        section : str = self._get_section_of_option(option)
         return self._create_lines_explicit_section(section, option, value)
 
     # sets options in inlist files
 
-    def set_option(self, option: str, value):
+    def set_option(self, option: str, value) -> None:
         
         # conversion such that output is in ''
         if type(value)==str:
@@ -187,7 +188,7 @@ class Inlist:
 
         print(f"Set {option} to {Inlist.fortran_format(value)}")
 
-    def restore_inlist(self)->None:
+    def restore_inlist(self) -> None:
         """Restores the inlist to its original version."""
         with open(self.name, 'w') as file:
             file.write(self.original_inlist)
@@ -196,10 +197,15 @@ class Inlist:
     def save_inlist(self)->None:
         """Copies the inlist into the LOGS directory of the run."""
         try:
-            os.system(f"cp {self.name} ./{self.read_option('log_directory')}/.")
+            log_directory : str = os.path.normpath(self.read_option('log_directory'))
+            shutil.copy(self.name, f"./{log_directory}/")
             print(f"saved {self.name} to {self.read_option('log_directory')} directory")
-        except:
-            raise ValueError("cp command failed. Check if the inlist has a log_directory option.")
+        except FileNotFoundError:
+            raise ValueError(f"The file {self.name} does not exist.")
+        except PermissionError:
+            raise ValueError(f"Permission denied to copy {self.name} to {log_directory}.")
+        except Exception as e:
+            raise ValueError(f"An unexpected error occurred: {str(e)}")
 
     # common inlist tasks
 
@@ -218,12 +224,12 @@ class Inlist:
         logs_path = Inlist.create_logs_path_string(**kwargs)
         self.set_option('log_directory', logs_path)
     
-    def set_initial_mass_in_M_Jup(self, M_p_in_M_J:float) -> None:
-        M_p_in_g = M_Jup_in_g*M_p_in_M_J
+    def set_initial_mass_in_M_Jup(self, M_p_in_M_J : float) -> None:
+        M_p_in_g : float = M_Jup_in_g*M_p_in_M_J
         self.set_option('mass_in_gm_for_create_initial_model', M_p_in_g)
 
-    def set_initial_radius_in_R_Jup(self, R_p_in_R_J:float) -> None:
-        R_p_in_cm = R_Jup_in_cm*R_p_in_R_J
+    def set_initial_radius_in_R_Jup(self, R_p_in_R_J : float) -> None:
+        R_p_in_cm : float = R_Jup_in_cm*R_p_in_R_J
         self.set_option('radius_in_cm_for_create_initial_model', R_p_in_cm)
 
     def set_initial_entropy_in_kergs(self, M_p : float, s0 : float, **kwargs) -> None:
@@ -232,8 +238,8 @@ class Inlist:
         This function computes the inital radius that approximately corresponds to `s0`.
         The resulting value is then set for 'radius_in_cm_for_create_initial_model'.
         """
-        R_ini = initial_radius(M_p, s0, **kwargs)
-        R_p_in_cm = R_ini * R_Jup_in_cm
+        R_ini : float = initial_radius(M_p, s0, **kwargs)
+        R_p_in_cm : float = R_ini * R_Jup_in_cm
         self.set_option('radius_in_cm_for_create_initial_model', R_p_in_cm)
 
     def set_convergence_tolerances(self, convergence_tolerances = 'very_tight', **kwargs)->None:
@@ -244,7 +250,7 @@ class Inlist:
         self.set_option('tol_max_correction', tol_max_correction)
 
     @classmethod
-    def restore_all_instances(cls):
+    def restore_all_instances(cls) -> None:
         for instance in cls.instances:
             instance.restore_inlist()
 
@@ -252,27 +258,27 @@ class Inlist:
 
     # delete all instances of Inlist
     @classmethod
-    def delete_all_instances(cls):
+    def delete_all_instances(cls) -> None:
         """Deletes all instances of Inlist."""
         cls.instances = []
 
     @classmethod
-    def delete_latest_instance(cls):
+    def delete_latest_instance(cls) -> None:
         """Deletes the last instance of Inlist."""
         if cls.instances:
             cls.instances.pop()
 
     @staticmethod
-    def fortran_format(x):
+    def fortran_format(x : float | bool | str | np.floating) -> str:
         """Converts a python type to a fortran type"""
-        if isinstance(x, float) or isinstance(x, np.float32) or isinstance(x, np.float64):
+        if isinstance(x, (float, np.floating)):
             
             # Check if the number is zero float
             if x == 0.0:
                 return '0d0'
             
-            log = np.log10(x)
-            exponent = int(np.floor(log))
+            log : np.floating = np.log10(x)
+            exponent : int = int(np.floor(log))
             prefactor = 10 ** (log - exponent)
             
             # Check if the prefactor is an integer or has trailing zeros
@@ -293,7 +299,7 @@ class Inlist:
         return out
     
     @staticmethod
-    def python_format(x):
+    def python_format(x) -> float | int | str | bool:
         """Converts a fortran number to a python number"""
         try:
             return int(x)
@@ -465,7 +471,7 @@ class Inlist:
         return logs_path
     
     @staticmethod
-    def convergence_tolerance_options(convergence_tolerances):
+    def convergence_tolerance_options(convergence_tolerances : str) -> list:
         """Returns common convergence tolerances."""
         if convergence_tolerances == "very_tight":
             tol_correction_norm = 1e-4

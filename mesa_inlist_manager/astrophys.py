@@ -78,11 +78,11 @@ def from_flux_to_equilibrium_temperature(flux):
     return (flux/4/sigma_SB)**(1/4)
 
 
-def scaled_solar_ratio_mass_fractions(Z)->list:
+def scaled_solar_ratio_mass_fractions(Z : float | np.ndarray ) -> np.ndarray:
     a = (1-Z)/(1-Z_Sol)
     X = a * X_Sol
     Y = a * Y_Sol
-    return [X, Y, Z]
+    return np.array([X, Y, Z])
 
 def diffusion_timescale(D : float, L : float)->float:
     return L**2/D

@@ -396,8 +396,43 @@ class CompositionalGradient:
         f_complete = CompositionalGradient.cubic_transition(m, f_1=f_core_dilute, f_2=f_env, m_1=m_dilute-dm_dilute, m_2=m_dilute)
 
         return f_complete
+    
+    @staticmethod
+    def piecewise_with_two_smoothed_exponential_transitions(m : np.ndarray, alphas : list[float], m_cores : list[float], dm_cores : list[float], Z_values : list[float]) -> np.ndarray:
+        """Returns an array of mass fractions for a compositional gradient with two smoothed exponential transitions between constant regions."""
 
-            
+        # tests
+        if any(n < 0 for n in m):
+            raise Exception("m should contain positive numbers only")
+        elif any(n < 0 for n in m_cores):
+            raise Exception("m_cores should contain positive numbers only")
+        elif any(n < 0 for n in Z_values):
+            raise Exception("Z_values should contain positive numbers only")
+        elif len(alphas) != 2:
+            raise Exception("alphas should contain exactly two values")
+        elif len(m_cores) != 3:
+            raise Exception("m_cores should contain exactly three values")
+        elif len(dm_cores) != 3:
+            raise Exception("dm_cores should contain exactly three values")
+        elif len(Z_values) != 3:
+            raise Exception("Z_values should contain exactly three values")
+        
+        # profile functions
+        f_core = lambda m: np.full_like(m, Z_values[0])
+        f_exp_core_dilute = lambda m: CompositionalGradient.exponential(m, alpha = alphas[0], m_start = m_cores[0], m_end = m_cores[1], Z_start = Z_values[0], Z_end = Z_values[1])
+        f_exp_dilute_env = lambda m: CompositionalGradient.exponential(m, alpha = alphas[1], m_start = m_cores[1], m_end = m_cores[2], Z_start = Z_values[1], Z_end = Z_values[2])
+        f_env = lambda m: np.full_like(m, Z_values[2])
+
+        profile_functions = [f_core, f_exp_core_dilute, f_exp_dilute_env, f_env]
+
+        # transition functions
+        transition_functions = [
+            CompositionalGradient.cubic_transition_fast_decrease,
+            CompositionalGradient.cubic_transition,
+            CompositionalGradient.cubic_transition
+        ]
+        
+        return CompositionalGradient.join_compositional_gradients(profile_functions, transition_functions, m_cores, dm_cores)(m)
 
     # ----------------------------------------- #
     # --------- Transition Functions ---------- #

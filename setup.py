@@ -20,6 +20,8 @@ setup(
 	install_requires=[
 		"mesa_reader>=0.3.0",
 		'numpy',
-		'scipy'
+		'scipy',
+		'pandas',
+		'toolz',
 		]
 )

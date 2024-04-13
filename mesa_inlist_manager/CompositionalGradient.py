@@ -4,6 +4,8 @@ import numpy as np
 from scipy.special import erf
 from typing import Callable
 from mesa_inlist_manager.astrophys import scaled_solar_ratio_mass_fractions, X_Sol, Y_Sol, Z_Sol, M_Earth_in_Jup, M_Jup_in_Earth
+from toolz import compose
+from functools import reduce
 
 # abundace data for basic.net
 # src: Lodders+2020
@@ -268,7 +270,7 @@ class CompositionalGradient:
 
         # tests
         if m_end < m_start:
-            raise Exception("m_end must be larger than m_start")
+            raise Exception(f"m_end must be larger than m_start, but m_end = {m_end} and m_start = {m_start}.")
         elif m_start < 0:
             raise Exception("m_start needs to be >= 0")
         elif any(n < 0 for n in m):
@@ -554,5 +556,59 @@ class CompositionalGradient:
         
         return CompositionalGradient._transition_function(m, f_transition, f_1, f_2, m_1, m_2)
     
- 
+
+    # ----------------------------------------- #
+    # --------- Gradient Compositions --------- #
+    # ----------------------------------------- #
     
+    @staticmethod
+    def join_compositional_gradients(profile_functions : list[Callable], transition_functions : list[Callable], transition_masses : list[float], dms : list[float], verbose = False)-> Callable[..., np.ndarray]:
+        """Uses N-1 transition functions to compose N profile functions at N-1 transition masses over N-1 widths.
+        
+        Parameters
+        ----------
+        profile_functions : list[Callable]
+            list of profile functions
+        transition_functions : list[Callable]
+            list of transition functions. 
+        transition_masses : list[float]
+            list of transition masses
+        dms : list[float]
+            list of transition widths
+        """
+
+        # tests
+        if len(profile_functions) != len(transition_functions) + 1:
+            raise Exception("The number of profile functions must be one more than the number of transition functions.")
+        elif len(transition_functions) != len(transition_masses):
+            raise Exception("The number of transition functions must be equal to the number of transition masses.")
+        elif len(transition_masses) != len(dms):
+            raise Exception("The number of transition masses must be equal to the number of transition widths.")
+
+        # create an array with the interpolation boundaries
+        # if dms[i] < 0, the interpolation goes from transition_masses[i] + dms[i] to transition_masses[i]
+        # if dms[i] > 0, the interpolation goes from transition_masses[i] to transition_masses[i] + dms[i]
+        
+        interpolation_ranges = np.array([[m + dm, m] if dm < 0.0 else [m, m + dm] for m, dm in zip(transition_masses, dms)])
+        if verbose:
+            print("Interpolation Ranges:")
+            for i, range in enumerate(interpolation_ranges):
+                print(f"Range {i+1}: {range[0]} - {range[1]}")
+
+        c : list[Callable[..., np.ndarray]|None] = [None] * len(transition_functions)
+
+    
+        def create_function(i, prev_func, transition_functions, profile_functions, interpolation_ranges):
+            if i == 0:
+                return lambda m: transition_functions[i](m, f_1 = profile_functions[i], f_2 = profile_functions[i+1], m_1 = interpolation_ranges[i, 0], m_2 = interpolation_ranges[i, 1])
+            else:
+                return lambda m: transition_functions[i](m, f_1 = prev_func, f_2 = profile_functions[i+1], m_1 = interpolation_ranges[i, 0], m_2 = interpolation_ranges[i, 1])
+
+        for i, t in enumerate(transition_functions):
+            c[i] = create_function(i, c[i-1], transition_functions, profile_functions, interpolation_ranges)
+
+        # if c[-1] is still None, we throw an error
+        if c[-1] is None:
+            raise Exception("Something went wrong with the composition of the functions.")
+        
+        return c[-1]

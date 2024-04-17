@@ -142,7 +142,7 @@ class CompositionalGradient:
         # reverse order for MESA's relax_inital_composition format
         return np.flip(l, 0)
 
-    def create_relax_inital_composition_file(self,relax_composition_filename = 'relax_composition_file.dat',  *args, **kwargs):
+    def create_relax_inital_composition_file(self, relax_composition_filename = 'relax_composition_file.dat',  *args, **kwargs):
 
         """
         Creates a file for `MESA`'s `relax_inital_composition functionality`. The `**kwargs` depend upon the self.method used.

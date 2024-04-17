@@ -365,7 +365,7 @@ class Inlist:
         suite_style=None,
         logs_style=None,
         **kwargs,
-    ) -> None:
+    ) -> str:
         """
         Returns the path to the logs directory.
 
@@ -485,8 +485,12 @@ class Inlist:
                 raise ValueError(
                     f"{logs_style} must be given if logs_style is {logs_style}"
                 )
-
-            logs_name = f"{logs_style}_{kwargs.get(logs_style, None):.2f}"
+            if isinstance(logs_value, (str,int)):
+                logs_name = f"{logs_style}_{logs_value}"
+            elif isinstance(logs_value, float):
+                logs_name = f"{logs_style}_{kwargs.get(logs_style, None):.2f}"
+            else:
+                raise ValueError(f"{logs_value} must be a string, integer or a float.")
 
         elif isinstance(logs_style, list):
             logs_name = Inlist._from_styles_to_string(logs_style, **kwargs)

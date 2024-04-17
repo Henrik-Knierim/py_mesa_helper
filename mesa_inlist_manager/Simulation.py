@@ -305,7 +305,48 @@ class Simulation:
             
         else:
             raise NotImplementedError("The method 'get_profile_data' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
-    def get_profile_header(self, data : str = "star_age", profile_number : int = -1, log_dir = None, **kwargs) -> list:
+        
+    def get_profile_data_at_condition(self, quantity : str, condition : str, value : float, profile_number : int = -1, log_dir = None, **kwargs) -> np.float_ | int:
+        """Returns the profile data for `quantity` where `condition` is `value`.
+        
+        Description
+        -----------
+        The routine finds the index where the condition is satisfied and returns the profile data at that index. It starts from the first index (surface) and moves to the last index (core).
+
+        Parameters
+        ----------
+        quantity : str
+            The quantity of the profile.
+        condition : str
+            The condition of the profile.
+        value : float
+            The value of the condition.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        log_dir : str, optional
+            The log directory. The default is None.
+        **kwargs : dict
+            Keyword arguments for `MesaProfileData`.
+        """
+
+        # throw an error if value is a bool or a string
+        if isinstance(value, (bool, str)):
+            raise ValueError('value must be a float or an integer.')
+        
+        condition_data = self.get_profile_data(condition, profile_number, log_dir, **kwargs)
+        index = np.argmin(np.abs(condition_data - value))
+        return self.get_profile_data(quantity, profile_number, log_dir, **kwargs)[index]
+    
+    def add_profile_data_at_condition(self, quantity : str, condition : str, value : float, profile_number : int = -1, name = None) -> None:
+        """Adds the profile data for `quantity` where `condition` is `value` to `self.results`."""
+        
+        if name is None:
+            name = f'first_{quantity}_at_{condition}_{value}'
+        
+        out = [self.get_profile_data_at_condition(quantity, condition, value, profile_number, log_dir) for log_dir in self.results['log_dir']]
+        self.results[name] = out
+
+    def get_profile_header(self, data : str = "star_age", profile_number = -1, log_dir = None, **kwargs):
         """Returns the profile header."""
         
         if hasattr(self, 'sim'):
@@ -317,7 +358,7 @@ class Simulation:
                 return self.logs[log_dir].profile_data(profile_number = profile_number, **kwargs).header_data[data]
         else:
             raise NotImplementedError("The method 'get_profile_header' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
-        
+     
     def interpolate_profile_data(self, x : str, y : str, profile_number : int = -1, **kwargs):
         """Creates an interpolation function for (x,y) at `self.interpolation[log, profile_number, x, y]`."""
         

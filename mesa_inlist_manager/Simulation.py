@@ -291,6 +291,10 @@ class Simulation:
         out = [Simulation.mean_profile_value(self.logs[log_key].profile_data(profile_number = profile_number, model_number=model_number), quantity, m0, m1) for log_key in self.results['log_dir']]
         self.results[integrated_quantity_key] = out
 
+    def get_mean_profile_value(self, quantity : str, m0 : float = 0.0, m1 : float = 1.0, profile_number : int = -1, model_number : int = -1, log_dir = None):
+        """Returns the mean of the profile quantity from m0 to m1."""
+        return Simulation.mean_profile_value(self.logs[log_dir].profile_data(profile_number = profile_number, model_number=model_number), quantity, m0, m1)
+
     def get_profile_data(self, quantity : str, profile_number : int = -1, log_dir = None, **kwargs) -> np.ndarray:
         """Returns the profile data for `quantity`."""
         
@@ -359,7 +363,7 @@ class Simulation:
         else:
             raise NotImplementedError("The method 'get_profile_header' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
      
-    def interpolate_profile_data(self, x : str, y : str, profile_number : int = -1, **kwargs):
+    def interpolate_profile_data(self, x : str, y : str, profile_number : int = -1, **kwargs) -> None:
         """Creates an interpolation function for (x,y) at `self.interpolation[log, profile_number, x, y]`."""
         
         # create the interpolation dictionary if it does not exist
@@ -373,6 +377,28 @@ class Simulation:
                 x_data = profile.data(x)
                 y_data = profile.data(y)
                 self.interpolation[log_key,profile_number,x,y] = interp1d(x_data, y_data, **kwargs)
+    
+    def interpolate_history_data(self, x: str, y: str, scaling = ('lin', 'lin'), **kwargs) -> None:
+        """Creates an interpolation function for (x,y) at `self.interpolation[log, x, y]`."""
+        
+        # throw an error if scaling is not a tuple that contains either 'lin' or 'log'
+        if not isinstance(scaling, tuple):
+            raise ValueError('scaling must be a tuple.')
+        elif not all([scale in ['lin', 'log'] for scale in scaling]):
+            raise ValueError('scaling must be either "lin" or "log"')
+
+        if not hasattr(self, 'interpolation'):
+            self.interpolation = {}
+        
+        x_lbl = 'log_' + x if scaling[0] == 'log' else x
+        y_lbl = 'log_' + y if scaling[1] == 'log' else y
+
+        for log_key in self.logs:
+            if self.interpolation.get((log_key, x_lbl, y_lbl)) is None:
+                history = self.histories[log_key]
+                x_data = history.data(x) if scaling[0] == 'lin' else np.log10(history.data(x))
+                y_data = history.data(y) if scaling[1] == 'lin' else np.log10(history.data(y))
+                self.interpolation[log_key, x_lbl, y_lbl] = interp1d(x_data, y_data, **kwargs)
 
     def get_relative_difference_of_two_profiles_from_two_logs(self, x : str, y : str, profile_number : int = -1, log_reference = None, log_compare = None, **kwargs):
         """Returns the relative difference of two profiles.

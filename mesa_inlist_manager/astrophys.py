@@ -92,6 +92,9 @@ def diffusion_timescale(D : float, L : float)->float:
 def specific_entropy(entropy_in_kerg):
     return NA*kB*entropy_in_kerg
 
+def specific_entropy_in_kerg(specific_entropy):
+    return specific_entropy/(NA*kB)
+
 # visible opacity fit from Guillot 2010
 def kappa_v_Guillot_2010(T_eq):
     "Return the visible opacity in cm^2/g for a given equilibrium temperature."

@@ -340,6 +340,23 @@ class Simulation:
         condition_data = self.get_profile_data(condition, profile_number, log_dir, **kwargs)
         index = np.argmin(np.abs(condition_data - value))
         return self.get_profile_data(quantity, profile_number, log_dir, **kwargs)[index]
+
+    def get_profile_number_at_profile_header_value(self, quantity : str, value : float, log_dir = None, **kwargs) -> int:
+        """Returns the profile number where the profile header value is `value`."""
+        
+        # create the profile_header_values dictionary if it does not exist
+        if not hasattr(self, 'profile_header_values'):
+            self.profile_header_values = {}
+        
+        # create the profile_header_values dictionary for the log directory if it does not exist
+        if self.profile_header_values.get(log_dir) is None:
+            self.profile_header_values[log_dir] = {}
+        
+        # create the profile_header_values dictionary for the quantity if it does not exist
+        if self.profile_header_values[log_dir].get(quantity) is None:
+            self.profile_header_values[log_dir][quantity] = np.array([self.logs[log_dir].profile_data(profile_number = i, **kwargs).header_data[quantity] for i in self.logs[log_dir].profile_numbers])
+
+        return np.argmin(np.abs(self.profile_header_values[log_dir][quantity] - value))
     
     def add_profile_data_at_condition(self, quantity : str, condition : str, value : float, profile_number : int = -1, name = None) -> None:
         """Adds the profile data for `quantity` where `condition` is `value` to `self.results`."""
@@ -510,6 +527,35 @@ class Simulation:
             ax.plot(profile.data(x), profile.data(y), **kwargs)
             
         
+        ax.set(xlabel = x, ylabel = y)
+        return ax
+
+    def profile_series_plot(self, x : str, y : str, profile_numbers : list = [-1], ax = None, set_labels : bool = False, log_dir : str | None = None, **kwargs):
+        """Plots the profile data with (x, y) as the axes at multiple profile numbers."""
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for profile_number in profile_numbers:
+            profile = self.logs[log_dir].profile_data(profile_number = profile_number)
+            if set_labels:
+                kwargs['label'] = f"{profile.header_data['star_age']:.2e}"
+            ax.plot(profile.data(x), profile.data(y), **kwargs)
+            
+        ax.set(xlabel = x, ylabel = y)
+        return ax
+    
+    def profile_series_plot_at_condition(self, x : str, y : str, condition : str, values : list[float], ax = None, set_labels : bool = False, log_dir : str | None = None, **kwargs):
+        """Plots the profile data with (x, y) as the axes at multiple profile numbers where `condition` is `values`."""
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for value in values:
+            profile_number = self.get_profile_number_at_profile_header_value(condition, value, log_dir = log_dir)
+            profile = self.logs[log_dir].profile_data(profile_number = profile_number)
+            if set_labels:
+                kwargs['label'] = f"{self.profile_header_values[log_dir][condition][profile_number]:.2e}"
+            ax.plot(profile.data(x), profile.data(y), **kwargs)
+            
         ax.set(xlabel = x, ylabel = y)
         return ax
     

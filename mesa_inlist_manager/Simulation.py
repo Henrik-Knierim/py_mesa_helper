@@ -379,7 +379,64 @@ class Simulation:
                 return self.logs[log_dir].profile_data(profile_number = profile_number, **kwargs).header_data[data]
         else:
             raise NotImplementedError("The method 'get_profile_header' is currently only supported for one simulation or a suite of simulations where the log_dir is specified.")
-     
+    
+    def get_profile_header_sequence_single(self, data : str = "star_age", log_dir = None, profile_numbers : list = [], **kwargs):
+        """Returns `data` from the profile header for all profile numbers in `profile_numbers` for the log specified by `log_dir`."""
+
+        # if profile_numbers = [], then we consider all profile numbers
+        if profile_numbers == []:
+            profile_numbers = self.logs[log_dir].profile_numbers
+
+        return np.array([self.logs[log_dir].profile_data(profile_number = i, **kwargs).header_data[data] for i in profile_numbers]) 
+    
+    def create_profile_header_sequence(self, data : str = "star_age", **kwargs) -> None:
+        "Creates the class attribute `profile_header_values[log_key][data]` for the profile header sequence for all logs."
+
+        # create a numpy array attribute for the profile header values if it does not exist
+        if not hasattr(self, 'profile_header_values'):
+            self.profile_header_values = {}
+
+        for log_key in self.logs:
+            # create a dictionary for the log directory if it does not exist
+            if self.profile_header_values.get(log_key) is None:
+                self.profile_header_values[log_key] = {}
+
+            # create a numpy array for the profile header values if it does not exist
+            if self.profile_header_values[log_key].get(data) is None:
+                self.profile_header_values[log_key][data] = self.get_profile_header_sequence_single(data, log_dir = log_key, **kwargs)
+            else:
+                # let the user know that the profile header values already exist
+                print(f'The profile header values for {data} already exist for log {log_key}.')
+    
+    def get_mean_profile_value_sequence_single(self, quantity : str, m0 : float = 0.0, m1 : float = 1.0, profile_numbers : list = [], log_dir = None, **kwargs):
+        """Returns the mean of the profile quantity from m0 to m1 for all profile numbers in `profile_numbers` for the log specified by `log_dir`."""
+        
+        if profile_numbers == []:
+            profile_numbers = self.logs[log_dir].profile_numbers
+
+        return np.array([Simulation.mean_profile_value(self.logs[log_dir].profile_data(profile_number = i, **kwargs), quantity, m0, m1) for i in profile_numbers])
+    
+    def create_mean_profile_value_sequence(self, quantity : str, m0 : float = 0.0, m1 : float = 1.0, **kwargs) -> None:
+        """Creates the class attribute `mean_profile_values[log_key][quantity]` for the mean profile value sequence for all logs."""
+        
+        # create a numpy array attribute for the mean profile values if it does not exist
+        if not hasattr(self, 'mean_profile_values'):
+            self.mean_profile_values = {}
+
+        for log_key in self.logs:
+            # create a dictionary for the log directory if it does not exist
+            if self.mean_profile_values.get(log_key) is None:
+                self.mean_profile_values[log_key] = {}
+
+            # create a numpy array for the mean profile values if it does not exist
+            if self.mean_profile_values[log_key].get(quantity) is None:
+                self.mean_profile_values[log_key][quantity] = self.get_mean_profile_value_sequence_single(quantity, m0, m1, log_dir = log_key, **kwargs)
+            
+            else:
+                # let the user know that the mean profile values already exist
+                print(f'The mean profile values for {quantity} already exist for log {log_key}.')
+
+
     def interpolate_profile_data(self, x : str, y : str, profile_number : int = -1, **kwargs) -> None:
         """Creates an interpolation function for (x,y) at `self.interpolation[log, profile_number, x, y]`."""
         
@@ -618,6 +675,36 @@ class Simulation:
         ax.plot(x_values, y_values, label = y)
         ax.set(xlabel = x, ylabel = 'Relative difference')
         return ax
+
+    def mean_profile_sequence_plot(self, x : str, y : str, m0 : float = 0.0, m1: float = 1.0, ax = None, set_labels = False, **kwargs):
+        """Plots a sequence of mean profile values with (x, y) as the axes."""
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        if x == 'star_age':
+            self.create_profile_header_sequence()
+        else:
+            self.create_mean_profile_value_sequence(x, m0, m1, **kwargs)
+
+        if y == 'star_age':
+            self.create_profile_header_sequence()
+        else:
+            self.create_mean_profile_value_sequence(y, m0, m1, **kwargs)
+
+        for log_key in self.logs:
+            x_val = self.profile_header_values[log_key]['star_age'] if x == 'star_age' else self.mean_profile_values[log_key][x]
+            y_val = self.profile_header_values[log_key]['star_age'] if y == 'star_age' else self.mean_profile_values[log_key][y]
+            
+            # set the label (optional)
+            if set_labels:
+                kwargs['label'] = log_key
+
+            ax.plot(x_val, y_val, **kwargs)
+
+        return ax
+
+
         
     
     # ------------------------------ #

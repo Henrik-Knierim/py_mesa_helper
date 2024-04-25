@@ -460,16 +460,17 @@ class CompositionalGradient:
         m_2 : float
             mass at which the transition ends
         """
+        verbose = False
 
         # tests
         if m_2 < m_1:
             raise Exception("m_2 must be larger than m_1")
         elif m_1 < 0:
-            raise Exception("m_1 needs to be >= 0")
+            raise Exception(f"m_1 needs to be >= 0, but is {m_1}")
         elif any(n < 0 for n in m):
             raise Exception("m should contain positive numbers only")
         elif m_2 == m_1:
-            print("Note: m_2 = m_1. A piecewise function is returned.")
+            print("Note: m_2 = m_1. A piecewise function is returned.") if verbose else None
             return np.piecewise(m, [m < m_1, m >= m_1], [f_1, f_2])
         
         return np.piecewise(m, [m < m_1, ((m_1 <= m) & (m <= m_2)), m > m_2], [f_1, f_transition , f_2])

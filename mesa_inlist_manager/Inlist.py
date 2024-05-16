@@ -373,12 +373,12 @@ class Inlist:
             logs_src (str): The parent directory for logs. Default is "LOGS".
             suite_dir (str): The parent directory for the suite. Default is "".
             logs_style: Style of logs. Can be None, str, or list.
-                - If None, the 'logs_name' keyword argument must be provided.
+                - If None, the 'logs_dir' keyword argument must be provided.
                 - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided.
                 - If 'logs_style' is str, the 'logs_style' keyword argument must be provided,
-                and its value will be appended to the 'logs_name' in the format 'logs_style_logs_value'.
+                and its value will be appended to the 'logs_dir' in the format 'logs_style_logs_value'.
                 - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings,
-                and the values corresponding to each style will be appended to the 'logs_name' in the format
+                and the values corresponding to each style will be appended to the 'logs_dir' in the format
                 'style1_value1_style2_value2_...'.
 
             **kwargs: Additional keyword arguments that may be required based on the 'logs_style' value.
@@ -393,28 +393,28 @@ class Inlist:
             This method generates a path to the logs directory based on the provided 'logs_style' and additional
             keyword arguments. It supports different scenarios:
 
-            - If 'logs_style' is None, the 'logs_name' keyword argument must be provided. The 'logs_name' will be used
+            - If 'logs_style' is None, the 'logs_dir' keyword argument must be provided. The 'logs_dir' will be used
             as the name of the logs directory.
 
             - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided. The method
             will read the value of the specified 'option' from the given MESA inlist file and append it as a new
-            entry to the 'folder.index' file in the logs directory. The 'logs_name' will be set to the index of
+            entry to the 'folder.index' file in the logs directory. The 'logs_dir' will be set to the index of
             the appended entry.
 
             - If 'logs_style' is str, the 'logs_style' keyword argument must be provided. The method will look for
             another keyword argument with the same name as the 'logs_style' value. The 'logs_value' will be appended
-            to the 'logs_name' in the format 'logs_style_logs_value'.
+            to the 'logs_dir' in the format 'logs_style_logs_value'.
 
             - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings. The
             method will look for keyword arguments corresponding to each style in the list. The values will be appended
-            to the 'logs_name' in the format 'style1_value1_style2_value2_...'.
+            to the 'logs_dir' in the format 'style1_value1_style2_value2_...'.
 
             If any of the required keyword arguments are missing or if 'logs_style' has an invalid value, a ValueError
             will be raised.
 
         Examples:
             >>> # Example 1: logs_style is None
-            >>> logs_path = Inlist.create_logs_path_string(logs_style=None, logs_name='test')
+            >>> logs_path = Inlist.create_logs_path_string(logs_style=None, logs_dir='test')
             >>> print(logs_path)
             LOGS/test
 
@@ -443,10 +443,10 @@ class Inlist:
             suite_dir = suite_dir
 
         if logs_style is None:
-            # get logs_name
-            logs_name = kwargs.get("logs_name", None)
-            if logs_name is None:
-                raise ValueError("logs_name must be given if logs_style is None.")
+            # get logs_dir
+            logs_dir = kwargs.get("logs_dir", None)
+            if logs_dir is None:
+                raise ValueError("logs_dir must be given if logs_style is None.")
 
         elif logs_style == "id":
 
@@ -476,31 +476,31 @@ class Inlist:
 
                 file.write(f"{lengt_of_file}\t{value}\n")
 
-            logs_name = f"{lengt_of_file}"
+            logs_dir = f"{lengt_of_file}"
 
         elif isinstance(logs_style, str):
-            # get logs_name
+            # get logs_dir
             logs_value = kwargs.get(logs_style, None)
             if logs_value is None:
                 raise ValueError(
                     f"{logs_style} must be given if logs_style is {logs_style}"
                 )
             if isinstance(logs_value, (str,int)):
-                logs_name = f"{logs_style}_{logs_value}"
+                logs_dir = f"{logs_style}_{logs_value}"
             elif isinstance(logs_value, float):
-                logs_name = f"{logs_style}_{kwargs.get(logs_style, None):.2f}"
+                logs_dir = f"{logs_style}_{kwargs.get(logs_style, None):.2f}"
             else:
                 raise ValueError(f"{logs_value} must be a string, integer or a float.")
 
         elif isinstance(logs_style, list):
-            logs_name = Inlist._from_styles_to_string(logs_style, **kwargs)
+            logs_dir = Inlist._from_styles_to_string(logs_style, **kwargs)
 
         else:
             raise ValueError(
                 f"logs_style must be None, str, or list. Got {logs_style}."
             )
 
-        logs_path = os.path.join(logs_src, suite_dir, logs_name)
+        logs_path = os.path.join(logs_src, suite_dir, logs_dir)
 
         return logs_path
 

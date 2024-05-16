@@ -133,18 +133,26 @@ class Simulation:
 
     @staticmethod
     def extract_value(string, free_param: str):
-        """Extracts the numerical value of `free_param` from `string`."""
+        """Extracts the value of `free_param` from `string`."""
         if type(free_param) != str:
             raise TypeError("free_params must be a string")
         elif free_param not in string:
             raise ValueError(f"Parameter {free_param} not found in string {string}")
 
         splitted_string = string.split(free_param)
-        value = float(splitted_string[1].split("_")[1])
+
+        value = splitted_string[1].split("_")[1]
+
+        # convert value either to a float or keep it as a string
+        try:
+            value = float(value)
+        except:
+            pass
+
         return value
 
     def get_suite_params(self, free_params):
-        """Add numerical value of `free_params` to the results DataFrame."""
+        """Add value of `free_params` to the results DataFrame."""
         # make free_params a list if it is not already
         if type(free_params) != list:
             free_params = [free_params]

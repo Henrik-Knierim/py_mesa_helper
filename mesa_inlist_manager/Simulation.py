@@ -141,13 +141,13 @@ class Simulation:
 
         splitted_string = string.split(free_param)
 
-        value = splitted_string[1].split("_")[1]
-
         # convert value either to a float or keep it as a string
         try:
-            value = float(value)
+            value = float(splitted_string[1].split("_")[1])
         except:
-            pass
+            value = splitted_string[1].split("_")[1:]
+            # join the list of strings to a single string
+            value = "_".join(value)
 
         return value
 

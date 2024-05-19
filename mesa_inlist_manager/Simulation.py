@@ -51,7 +51,8 @@ class Simulation:
             self.sim = sim
 
         if hasattr(self, "suite"):
-            self.log_dirs = os.listdir(self.suite_dir)
+            # get the log directories while ignoring hidden directories
+            self.log_dirs = [log_dir for log_dir in os.listdir(self.suite_dir) if not log_dir.startswith('.')]
             # sort the log directories
             # maybe you need to modify this if you have multiple suite parameters
             self.log_dirs.sort()

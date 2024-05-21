@@ -6,7 +6,7 @@ import os
 import numpy as np
 import mesa_reader as mr
 import pandas as pd
-from mesa_inlist_manager.astrophys import M_Jup_in_g
+from mesa_helper.astrophys import M_Jup_in_g
 from scipy.interpolate import interp1d
 
 

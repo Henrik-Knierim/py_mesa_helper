@@ -1,8 +1,8 @@
-from mesa_inlist_manager.astrophys import *
-from mesa_inlist_manager.Inlist import *
-from mesa_inlist_manager.CompositionalGradient import *
-from mesa_inlist_manager.rn import rn
-from mesa_inlist_manager.Simulation import Simulation
+from mesa_helper.astrophys import *
+from mesa_helper.Inlist import *
+from mesa_helper.CompositionalGradient import *
+from mesa_helper.rn import rn
+from mesa_helper.Simulation import Simulation
 
 
 def create_inital_model(M_p:float, s0 : float = None, R_ini : float = None,

@@ -2,7 +2,7 @@ import os
 import re
 import numpy as np
 import shutil
-from mesa_inlist_manager.astrophys import *
+from mesa_helper.astrophys import *
 from typing import Callable
 
 

@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.special import erf
 from typing import Callable
-from mesa_inlist_manager.astrophys import scaled_solar_ratio_mass_fractions, X_Sol, Y_Sol, Z_Sol, M_Earth_in_Jup, M_Jup_in_Earth
+from mesa_helper.astrophys import scaled_solar_ratio_mass_fractions, X_Sol, Y_Sol, Z_Sol, M_Earth_in_Jup, M_Jup_in_Earth
 from toolz import compose
 from functools import reduce
 

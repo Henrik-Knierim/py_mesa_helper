@@ -10,7 +10,6 @@ setup(
 	author="Henrik Knierim",
 	author_email="henrik.knierim@uzh.ch",
 	packages=find_packages(include=['mesa_helper','mesa_helper.*']),
-	package_data={'mesa_helper':['resources/*', 'resources/r10108/*', 'resources/23.05.1/*']},
 	description="A simple package for changing MESA inlists.",
 	long_description=description,
 	long_description_content_type="text/markdown",

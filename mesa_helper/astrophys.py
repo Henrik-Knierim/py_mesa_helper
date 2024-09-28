@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.interpolate import LinearNDInterpolator
 from scipy import integrate
 from os import path
 
@@ -40,43 +39,11 @@ Teff_Jup = 124  # K
 
 # <<< constants <<<
 
-# >>> math functions >>>
-def mean_functional_residual_from_list(f: list, f0: list, dx: list) -> float:
- 
-        # calculate the residual
-        variance = np.sum(np.power(f - f0, 2) * dx) / np.sum(dx)
-
-        return np.sqrt(variance)
-
-def mean_functional_residual(f, f0, x_min: float, x_max: float):
-
-    df2 = lambda x: np.power(f(x) - f0(x), 2)
-    
-    h2 = integrate.quad(df2, x_min, x_max)[0]/(x_max - x_min)
-
-    return np.sqrt(h2)
-
-def heterogeneity(f, x_min: float, x_max: float):
-    
-        f_mean = integrate.quad(f, x_min, x_max)[0]/(x_max - x_min)
-    
-        df2 = lambda x: np.power(f(x) - f_mean, 2)
-        
-        h2 = integrate.quad(df2, x_min, x_max)[0]/(x_max - x_min)
-    
-        return np.sqrt(h2)
-
-# <<< math functions <<<
 
 # >>> astro functions >>>
 
-def from_Jupiter_to_Solar_mass(mass):
-    return mass * M_Jup_in_Sol
-
-
 def from_flux_to_equilibrium_temperature(flux):
     return (flux/4/sigma_SB)**(1/4)
-
 
 def scaled_solar_ratio_mass_fractions(Z : float | np.ndarray ) -> np.ndarray:
     a = (1-Z)/(1-Z_Sol)
@@ -104,18 +71,5 @@ def kappa_v_Guillot_2010(T_eq):
     return kappa_0 * np.sqrt(T_irr/T_0)
 
 # Compute the intial radius for an adiabatic model given the inital mass and center entropy
-
-# Load the entropy data
-entripy_interpolation_file = 'initial_entropy_interpolation_file.txt'
-src_entropy_interpolation = path.join(resources_dir, entripy_interpolation_file)
-mass_grid, inital_radius_grid, initial_entropy_grid = np.loadtxt(src_entropy_interpolation, unpack=True)
-
-# Create a linear interpolation object
-interp = LinearNDInterpolator(list(zip(mass_grid, initial_entropy_grid)), inital_radius_grid)
-
-# Define the function to return interpolated y value for given x and z values
-def initial_radius(M_p : float, s0 : float, **kwargs) -> float: # [M_J] and [kB/baryon]:
-    return interp(M_p, s0)
-
 
 # <<< astro functions <<<

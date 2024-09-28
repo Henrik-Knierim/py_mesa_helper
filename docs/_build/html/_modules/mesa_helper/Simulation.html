@@ -1,0 +1,1256 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mesa_helper.Simulation &#8212; PyMesaHelper 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css" />
+    <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for mesa_helper.Simulation</h1><div class="highlight"><pre>
+<span></span><span class="c1"># class for anything related to after the simulation has been run</span>
+<span class="c1"># for example, analyzing, plotting, saving, etc.</span>
+<span class="kn">from</span> <span class="nn">ast</span> <span class="kn">import</span> <span class="n">Raise</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">mesa_reader</span> <span class="k">as</span> <span class="nn">mr</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">mesa_helper.astrophys</span> <span class="kn">import</span> <span class="n">M_Jup_in_g</span>
+<span class="kn">from</span> <span class="nn">scipy.interpolate</span> <span class="kn">import</span> <span class="n">interp1d</span>
+
+
+<div class="viewcode-block" id="Simulation"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation">[docs]</a><span class="k">class</span> <span class="nc">Simulation</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Class for anything related to after the simulation has been run. For example, analyzing, plotting, saving, etc.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">parent_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;./LOGS&quot;</span><span class="p">,</span>
+        <span class="n">suite</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">sim</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">check_age_convergence</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">delete_horribly_failed_simulations</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initializes the Simulation object.</span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        parent_dir : str, optional</span>
+<span class="sd">            The parent directory of the simulation. The default is &#39;./LOGS&#39;.</span>
+<span class="sd">        suite : str, optional</span>
+<span class="sd">            The simulation suite. The default is &#39;&#39;.</span>
+<span class="sd">        sim : str, optional</span>
+<span class="sd">            The simulation. The default is &#39;&#39;.</span>
+<span class="sd">        check_age_convergence : bool, optional</span>
+<span class="sd">            If True, then the simulations that do not converge to the final age are removed. The default is True.</span>
+<span class="sd">        **kwargs : dict</span>
+<span class="sd">            Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># parent directory of the simulation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent_dir</span> <span class="o">=</span> <span class="n">parent_dir</span>
+
+        <span class="c1"># simulation suite (if any)</span>
+        <span class="k">if</span> <span class="n">suite</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">suite</span> <span class="o">=</span> <span class="n">suite</span>
+            <span class="c1"># full relative path to the suite and simulation</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">suite_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parent_dir</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">suite</span><span class="p">)</span>
+
+        <span class="c1"># simulation (if any)</span>
+        <span class="k">if</span> <span class="n">sim</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sim</span> <span class="o">=</span> <span class="n">sim</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;suite&quot;</span><span class="p">):</span>
+            <span class="c1"># get the log directories while ignoring hidden directories</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span> <span class="o">=</span> <span class="p">[</span><span class="n">log_dir</span> <span class="k">for</span> <span class="n">log_dir</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">suite_dir</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">log_dir</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)]</span>
+            <span class="c1"># sort the log directories</span>
+            <span class="c1"># maybe you need to modify this if you have multiple suite parameters</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sim_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parent_dir</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">)</span>
+
+        <span class="c1"># import sim results</span>
+        <span class="c1"># first, delete horribly failed simulations</span>
+        <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">delete_horribly_failed_simulations</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">delete_horribly_failed_simulations</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+
+        <span class="c1"># then, initialize the mesa logs and histories</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_mesa_logs</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_mesa_histories</span><span class="p">()</span>
+
+        <span class="c1"># delete simulations that do not converge to the final age</span>
+        <span class="c1"># these did not fail horribly, but they did not converge to the final age</span>
+        <span class="k">if</span> <span class="n">check_age_convergence</span><span class="p">:</span>
+            <span class="n">final_age</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;final_age&quot;</span><span class="p">,</span> <span class="mf">5e9</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">remove_non_converged_simulations</span><span class="p">(</span><span class="n">final_age</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_simulations</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">)</span>
+
+        <span class="c1"># add the simulation parameters to self.results</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;suite&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">&quot;log_dir&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="p">})</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">&quot;log_dir&quot;</span><span class="p">:</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">]})</span>
+
+    <span class="c1"># create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;suite&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">suite</span>
+
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">sim</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">Raise</span><span class="p">(</span>
+                <span class="ne">NotImplementedError</span><span class="p">(</span>
+                    <span class="s2">&quot;The simulation does not have a suite or a simulation.&quot;</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_init_mesa_logs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialzes `MesaLogDir` objects for each log directory in the simulation.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># if we only consider one simulation, then we only have one log directory</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim_dir&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">]</span> <span class="o">=</span> <span class="n">mr</span><span class="o">.</span><span class="n">MesaLogDir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sim_dir</span><span class="p">)</span>
+            <span class="c1"># for convenience, we also create a log attribute for the log directory</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">]</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">log_dir</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span> <span class="o">=</span> <span class="n">mr</span><span class="o">.</span><span class="n">MesaLogDir</span><span class="p">(</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">suite_dir</span><span class="p">,</span> <span class="n">log_dir</span><span class="p">)</span>
+                <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_init_mesa_histories</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initializes `MesaData` objects for each history file in the simulation.&quot;&quot;&quot;</span>
+
+        <span class="c1"># make sure self.logs exists</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;logs&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_init_mesa_logs</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">histories</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">log</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">log</span><span class="o">.</span><span class="n">history</span>
+
+        <span class="c1"># if we only consider one simulation, then we only have one history file</span>
+        <span class="c1"># for convenience, we then also create a history attribute for the history file</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim_dir&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">]</span>
+
+<div class="viewcode-block" id="Simulation.extract_value"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.extract_value">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">extract_value</span><span class="p">(</span><span class="n">string</span><span class="p">,</span> <span class="n">free_param</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Extracts the value of `free_param` from `string`.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">free_param</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">str</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;free_params must be a string&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">free_param</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">string</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Parameter </span><span class="si">{</span><span class="n">free_param</span><span class="si">}</span><span class="s2"> not found in string </span><span class="si">{</span><span class="n">string</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">splitted_string</span> <span class="o">=</span> <span class="n">string</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">free_param</span><span class="p">)</span>
+
+        <span class="c1"># convert value either to a float or keep it as a string</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">splitted_string</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">splitted_string</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="c1"># join the list of strings to a single string</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;_&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">value</span></div>
+
+<div class="viewcode-block" id="Simulation.get_suite_params"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_suite_params">[docs]</a>    <span class="k">def</span> <span class="nf">get_suite_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">free_params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add value of `free_params` to the results DataFrame.&quot;&quot;&quot;</span>
+        <span class="c1"># make free_params a list if it is not already</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">free_params</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">list</span><span class="p">:</span>
+            <span class="n">free_params</span> <span class="o">=</span> <span class="p">[</span><span class="n">free_params</span><span class="p">]</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">free_param</span> <span class="ow">in</span> <span class="n">free_params</span><span class="p">:</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">free_param</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">extract_value</span><span class="p">(</span><span class="n">log_dir</span><span class="p">,</span> <span class="n">free_param</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">log_dir</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]</span>
+            <span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">out</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span></div>
+
+    <span class="c1"># ------------------------------ #</span>
+    <span class="c1"># --- Simulation Convergence --- #</span>
+    <span class="c1"># ------------------------------ #</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_is_profile_index_valid</span><span class="p">(</span><span class="n">path_to_profile_index</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns True if profiles.index contains more than 2 lines.&quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_to_profile_index</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">lines</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span>
+
+<div class="viewcode-block" id="Simulation.delete_horribly_failed_simulations"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.delete_horribly_failed_simulations">[docs]</a>    <span class="k">def</span> <span class="nf">delete_horribly_failed_simulations</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Deletes all simulations that have a profiles.index file with less than 2 lines.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;log_dirs&quot;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">log_dir</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="p">:</span>
+                <span class="n">path_to_profile_index</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">suite_dir</span><span class="p">,</span> <span class="n">log_dir</span><span class="p">,</span> <span class="s2">&quot;profiles.index&quot;</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_profile_index_valid</span><span class="p">(</span><span class="n">path_to_profile_index</span><span class="p">):</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;rm -r </span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">suite_dir</span><span class="p">,</span><span class="w"> </span><span class="n">log_dir</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">log_dir</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">path_to_profile_index</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sim_dir</span><span class="p">,</span> <span class="s2">&quot;profiles.index&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_profile_index_valid</span><span class="p">(</span><span class="n">path_to_profile_index</span><span class="p">):</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;rm -r </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sim_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">sim</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.has_conserved_mass_fractions"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.has_conserved_mass_fractions">[docs]</a>    <span class="k">def</span> <span class="nf">has_conserved_mass_fractions</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">starting_model</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">final_model</span><span class="o">=-</span><span class="mi">1</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Checks if the simulation has conserved mass fractions to a certain tolerance&quot;&quot;&quot;</span>
+
+        <span class="n">mass_keys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;total_mass_h1&quot;</span><span class="p">,</span> <span class="s2">&quot;total_mass_he4&quot;</span><span class="p">,</span> <span class="s2">&quot;total_mass_o16&quot;</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">history</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+
+            <span class="n">dm_h1</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;total_mass_h1&quot;</span><span class="p">)[</span><span class="n">final_model</span><span class="p">]</span>
+                <span class="o">-</span> <span class="n">history</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;total_mass_h1&quot;</span><span class="p">)[</span><span class="n">starting_model</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="n">dm_he4</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;total_mass_he4&quot;</span><span class="p">)[</span><span class="n">final_model</span><span class="p">]</span>
+                <span class="o">-</span> <span class="n">history</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;total_mass_he4&quot;</span><span class="p">)[</span><span class="n">starting_model</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="n">dm_o16</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;total_mass_o16&quot;</span><span class="p">)[</span><span class="n">final_model</span><span class="p">]</span>
+                <span class="o">-</span> <span class="n">history</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;total_mass_o16&quot;</span><span class="p">)[</span><span class="n">starting_model</span><span class="p">]</span>
+            <span class="p">)</span>
+
+            <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">dm_h1</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tol</span> <span class="ow">or</span> <span class="nb">abs</span><span class="p">(</span><span class="n">dm_he4</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tol</span> <span class="ow">or</span> <span class="nb">abs</span><span class="p">(</span><span class="n">dm_o16</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="Simulation.has_final_age"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.has_final_age">[docs]</a>    <span class="k">def</span> <span class="nf">has_final_age</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">final_age</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Checks if the simulation has the final age to a certain tolerance.&quot;&quot;&quot;</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="kc">True</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">}</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">history</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+
+            <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;star_age&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">final_age</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">:</span>
+                <span class="n">out</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="n">out</span></div>
+
+<div class="viewcode-block" id="Simulation.remove_non_converged_simulations"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.remove_non_converged_simulations">[docs]</a>    <span class="k">def</span> <span class="nf">remove_non_converged_simulations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">final_age</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Removes all simulations that do not converge according to the criterion.&quot;&quot;&quot;</span>
+
+        <span class="n">bools</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_final_age</span><span class="p">(</span><span class="n">final_age</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">failed_simulations</span> <span class="o">=</span> <span class="p">[</span><span class="n">key</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="nb">bool</span> <span class="ow">in</span> <span class="n">bools</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">bool</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="nb">bool</span> <span class="ow">in</span> <span class="n">bools</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">bool</span><span class="p">:</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">key</span><span class="p">)]</span></div>
+
+<div class="viewcode-block" id="Simulation.delete_suite"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.delete_suite">[docs]</a>    <span class="k">def</span> <span class="nf">delete_suite</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Cleans the logs directory.&quot;&quot;&quot;</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;rm -r </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">suite_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.delete_failed_simulations"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.delete_failed_simulations">[docs]</a>    <span class="k">def</span> <span class="nf">delete_failed_simulations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">final_age</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Deletes the failed simulations.&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+    <span class="c1"># ------------------------------ #</span>
+    <span class="c1"># ----- Simulation Results ----- #</span>
+    <span class="c1"># ------------------------------ #</span>
+<div class="viewcode-block" id="Simulation.add_history_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.add_history_data">[docs]</a>    <span class="k">def</span> <span class="nf">add_history_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">history_keys</span><span class="p">,</span> <span class="n">model</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">age</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Adds `history_key` to `self.results`.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">history_keys</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">list</span><span class="p">:</span>
+            <span class="n">history_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">history_keys</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">age</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">model</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># add the final model</span>
+                <span class="k">for</span> <span class="n">history_key</span> <span class="ow">in</span> <span class="n">history_keys</span><span class="p">:</span>
+                    <span class="n">out</span> <span class="o">=</span> <span class="p">[</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">history_key</span><span class="p">)[</span><span class="n">model</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]</span>
+                    <span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">history_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">history_key</span> <span class="ow">in</span> <span class="n">history_keys</span><span class="p">:</span>
+                    <span class="n">out</span> <span class="o">=</span> <span class="p">[</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">data_at_model_number</span><span class="p">(</span><span class="n">history_key</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+                        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]</span>
+                    <span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">history_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;model must be an integer&quot;</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">age</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+            <span class="c1"># find the model number closest to the age</span>
+            <span class="k">for</span> <span class="n">history_key</span> <span class="ow">in</span> <span class="n">history_keys</span><span class="p">:</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]))</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]):</span>
+                    <span class="n">ages</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;star_age&quot;</span><span class="p">)</span>
+                    <span class="n">parameter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">history_key</span><span class="p">)</span>
+                    <span class="n">model</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">ages</span> <span class="o">-</span> <span class="n">age</span><span class="p">))</span>
+                    <span class="n">out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">parameter</span><span class="p">[</span><span class="n">model</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">history_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;age must be None or a float&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.integrate_profile"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.integrate_profile">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">integrate_profile</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Integrates the profile quantity from m0 to m1 in Jupiter masses.&quot;&quot;&quot;</span>
+        <span class="n">m_Jup</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;mass_Jup&quot;</span><span class="p">)</span>
+        <span class="n">dm</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;dm&quot;</span><span class="p">)[(</span><span class="n">m0</span> <span class="o">&lt;</span> <span class="n">m_Jup</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">m_Jup</span> <span class="o">&lt;</span> <span class="n">m1</span><span class="p">)]</span> <span class="o">/</span> <span class="n">M_Jup_in_g</span>
+        <span class="n">quantity</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">quantity</span><span class="p">)[(</span><span class="n">m0</span> <span class="o">&lt;</span> <span class="n">m_Jup</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">m_Jup</span> <span class="o">&lt;</span> <span class="n">m1</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dm</span><span class="p">,</span> <span class="n">quantity</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.mean_profile_value"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.mean_profile_value">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">mean_profile_value</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">quantity</span><span class="p">,</span> <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Integrates the profile quantity from m0 to m1 in Jupiter masses.&quot;&quot;&quot;</span>
+        <span class="n">m_Jup</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;mass_Jup&quot;</span><span class="p">)</span>
+        <span class="n">dm</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="s2">&quot;dm&quot;</span><span class="p">)[(</span><span class="n">m0</span> <span class="o">&lt;</span> <span class="n">m_Jup</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">m_Jup</span> <span class="o">&lt;</span> <span class="n">m1</span><span class="p">)]</span> <span class="o">/</span> <span class="n">M_Jup_in_g</span>
+        <span class="n">quantity</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">quantity</span><span class="p">)[(</span><span class="n">m0</span> <span class="o">&lt;</span> <span class="n">m_Jup</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">m_Jup</span> <span class="o">&lt;</span> <span class="n">m1</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dm</span><span class="p">,</span> <span class="n">quantity</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dm</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.add_integrated_profile_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.add_integrated_profile_data">[docs]</a>    <span class="k">def</span> <span class="nf">add_integrated_profile_data</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Integrates the profile quantity from m0 to m1 and adds it to `self.results`.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">integrated_quantity_key</span> <span class="o">=</span> <span class="s2">&quot;integrated_&quot;</span> <span class="o">+</span> <span class="n">quantity</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">integrated_quantity_key</span> <span class="o">=</span> <span class="n">name</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">Simulation</span><span class="o">.</span><span class="n">integrate_profile</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">),</span>
+                <span class="n">quantity</span><span class="p">,</span>
+                <span class="n">m0</span><span class="p">,</span>
+                <span class="n">m1</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">integrated_quantity_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span></div>
+
+<div class="viewcode-block" id="Simulation.add_mean_profile_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.add_mean_profile_data">[docs]</a>    <span class="k">def</span> <span class="nf">add_mean_profile_data</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">model_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Computes the mean of the profile quantity from m0 to m1 and adds it to `self.results`.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">integrated_quantity_key</span> <span class="o">=</span> <span class="s2">&quot;mean_&quot;</span> <span class="o">+</span> <span class="n">quantity</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">integrated_quantity_key</span> <span class="o">=</span> <span class="n">name</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">Simulation</span><span class="o">.</span><span class="n">mean_profile_value</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span>
+                    <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="n">model_number</span><span class="o">=</span><span class="n">model_number</span>
+                <span class="p">),</span>
+                <span class="n">quantity</span><span class="p">,</span>
+                <span class="n">m0</span><span class="p">,</span>
+                <span class="n">m1</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">integrated_quantity_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span></div>
+
+<div class="viewcode-block" id="Simulation.get_mean_profile_value"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_mean_profile_value">[docs]</a>    <span class="k">def</span> <span class="nf">get_mean_profile_value</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">model_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">log_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the mean of the profile quantity from m0 to m1.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">Simulation</span><span class="o">.</span><span class="n">mean_profile_value</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span>
+                <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="n">model_number</span><span class="o">=</span><span class="n">model_number</span>
+            <span class="p">),</span>
+            <span class="n">quantity</span><span class="p">,</span>
+            <span class="n">m0</span><span class="p">,</span>
+            <span class="n">m1</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.get_profile_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_profile_data">[docs]</a>    <span class="k">def</span> <span class="nf">get_profile_data</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the profile data for `quantity`.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">]</span>
+                <span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">quantity</span><span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;suite&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">log_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;log_dir must be specified.&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span>
+                    <span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">quantity</span><span class="p">)</span>
+                <span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s2">&quot;The method &#39;get_profile_data&#39; is currently only supported for one simulation or a suite of simulations where the log_dir is specified.&quot;</span>
+            <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.get_profile_data_at_condition"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_profile_data_at_condition">[docs]</a>    <span class="k">def</span> <span class="nf">get_profile_data_at_condition</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">log_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">float_</span> <span class="o">|</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the profile data for `quantity` where `condition` is `value`.</span>
+
+<span class="sd">        Description</span>
+<span class="sd">        -----------</span>
+<span class="sd">        The routine finds the index where the condition is satisfied and returns the profile data at that index. It starts from the first index (surface) and moves to the last index (core).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        quantity : str</span>
+<span class="sd">            The quantity of the profile.</span>
+<span class="sd">        condition : str</span>
+<span class="sd">            The condition of the profile.</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the condition.</span>
+<span class="sd">        profile_number : int, optional</span>
+<span class="sd">            The profile number. The default is -1.</span>
+<span class="sd">        log_dir : str, optional</span>
+<span class="sd">            The log directory. The default is None.</span>
+<span class="sd">        **kwargs : dict</span>
+<span class="sd">            Keyword arguments for `MesaProfileData`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># throw an error if value is a bool or a string</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;value must be a float or an integer.&quot;</span><span class="p">)</span>
+
+        <span class="n">condition_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+            <span class="n">condition</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">,</span> <span class="n">log_dir</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">condition_data</span> <span class="o">-</span> <span class="n">value</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span><span class="n">quantity</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">,</span> <span class="n">log_dir</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)[</span><span class="n">index</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="Simulation.get_profile_number_at_profile_header_value"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_profile_number_at_profile_header_value">[docs]</a>    <span class="k">def</span> <span class="nf">get_profile_number_at_profile_header_value</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the profile number where the profile header value is `value`.&quot;&quot;&quot;</span>
+
+        <span class="c1"># create the profile_header_values dictionary if it does not exist</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;profile_header_values&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># create the profile_header_values dictionary for the log directory if it does not exist</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">log_dir</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># create the profile_header_values dictionary for the quantity if it does not exist</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">quantity</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_dir</span><span class="p">][</span><span class="n">quantity</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span>
+                    <span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="o">.</span><span class="n">header_data</span><span class="p">[</span><span class="n">quantity</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">profile_numbers</span>
+                <span class="p">]</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_dir</span><span class="p">][</span><span class="n">quantity</span><span class="p">]</span> <span class="o">-</span> <span class="n">value</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="Simulation.add_profile_data_at_condition"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.add_profile_data_at_condition">[docs]</a>    <span class="k">def</span> <span class="nf">add_profile_data_at_condition</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Adds the profile data for `quantity` where `condition` is `value` to `self.results`.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;first_</span><span class="si">{</span><span class="n">quantity</span><span class="si">}</span><span class="s2">_at_</span><span class="si">{</span><span class="n">condition</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data_at_condition</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="p">,</span> <span class="n">condition</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">,</span> <span class="n">log_dir</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">log_dir</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;log_dir&quot;</span><span class="p">]</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span></div>
+
+<div class="viewcode-block" id="Simulation.get_profile_header"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_profile_header">[docs]</a>    <span class="k">def</span> <span class="nf">get_profile_header</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;star_age&quot;</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the profile header.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">sim</span><span class="p">]</span>
+                <span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">header_data</span><span class="p">[</span><span class="n">data</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;suite&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">log_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;log_dir must be specified.&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span>
+                    <span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="o">.</span><span class="n">header_data</span><span class="p">[</span><span class="n">data</span><span class="p">]</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s2">&quot;The method &#39;get_profile_header&#39; is currently only supported for one simulation or a suite of simulations where the log_dir is specified.&quot;</span>
+            <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.get_profile_header_sequence_single"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_profile_header_sequence_single">[docs]</a>    <span class="k">def</span> <span class="nf">get_profile_header_sequence_single</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;star_age&quot;</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">profile_numbers</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[],</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns `data` from the profile header for all profile numbers in `profile_numbers` for the log specified by `log_dir`.&quot;&quot;&quot;</span>
+
+        <span class="c1"># if profile_numbers = [], then we consider all profile numbers</span>
+        <span class="k">if</span> <span class="n">profile_numbers</span> <span class="o">==</span> <span class="p">[]:</span>
+            <span class="n">profile_numbers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">profile_numbers</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span>
+                <span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">header_data</span><span class="p">[</span><span class="n">data</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">profile_numbers</span>
+            <span class="p">]</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.create_profile_header_sequence"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.create_profile_header_sequence">[docs]</a>    <span class="k">def</span> <span class="nf">create_profile_header_sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;star_age&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="s2">&quot;Creates the class attribute `profile_header_values[log_key][data]` for the profile header sequence for all logs.&quot;</span>
+
+        <span class="c1"># create a numpy array attribute for the profile header values if it does not exist</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;profile_header_values&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+            <span class="c1"># create a dictionary for the log directory if it does not exist</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">log_key</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+            <span class="c1"># create a numpy array for the profile header values if it does not exist</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">][</span><span class="n">data</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_header_sequence_single</span><span class="p">(</span>
+                        <span class="n">data</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_key</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># let the user know that the profile header values already exist</span>
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;The profile header values for </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s2"> already exist for log </span><span class="si">{</span><span class="n">log_key</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.get_mean_profile_value_sequence_single"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_mean_profile_value_sequence_single">[docs]</a>    <span class="k">def</span> <span class="nf">get_mean_profile_value_sequence_single</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">profile_numbers</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[],</span>
+        <span class="n">log_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the mean of the profile quantity from m0 to m1 for all profile numbers in `profile_numbers` for the log specified by `log_dir`.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">profile_numbers</span> <span class="o">==</span> <span class="p">[]:</span>
+            <span class="n">profile_numbers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">profile_numbers</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">Simulation</span><span class="o">.</span><span class="n">mean_profile_value</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">),</span>
+                    <span class="n">quantity</span><span class="p">,</span>
+                    <span class="n">m0</span><span class="p">,</span>
+                    <span class="n">m1</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">profile_numbers</span>
+            <span class="p">]</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.create_mean_profile_value_sequence"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.create_mean_profile_value_sequence">[docs]</a>    <span class="k">def</span> <span class="nf">create_mean_profile_value_sequence</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">quantity</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Creates the class attribute `mean_profile_values[log_key][quantity]` for the mean profile value sequence for all logs.&quot;&quot;&quot;</span>
+
+        <span class="c1"># create a numpy array attribute for the mean profile values if it does not exist</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;mean_profile_values&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean_profile_values</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+            <span class="c1"># create a dictionary for the log directory if it does not exist</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_profile_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">log_key</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">mean_profile_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+            <span class="c1"># create a numpy array for the mean profile values if it does not exist</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_profile_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">quantity</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">mean_profile_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">][</span><span class="n">quantity</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">get_mean_profile_value_sequence_single</span><span class="p">(</span>
+                        <span class="n">quantity</span><span class="p">,</span> <span class="n">m0</span><span class="p">,</span> <span class="n">m1</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_key</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># let the user know that the mean profile values already exist</span>
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;The mean profile values for </span><span class="si">{</span><span class="n">quantity</span><span class="si">}</span><span class="s2"> already exist for log </span><span class="si">{</span><span class="n">log_key</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.interpolate_profile_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.interpolate_profile_data">[docs]</a>    <span class="k">def</span> <span class="nf">interpolate_profile_data</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Creates an interpolation function for (x,y) at `self.interpolation[log, profile_number, x, y]`.&quot;&quot;&quot;</span>
+
+        <span class="c1"># create the interpolation dictionary if it does not exist</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;interpolation&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+            <span class="c1"># if the interpolation does not exist, create it</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">log_key</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">))</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">profile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">)</span>
+                <span class="n">x_data</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="n">y_data</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="p">[</span><span class="n">log_key</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">]</span> <span class="o">=</span> <span class="n">interp1d</span><span class="p">(</span>
+                    <span class="n">x_data</span><span class="p">,</span> <span class="n">y_data</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+                <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.interpolate_history_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.interpolate_history_data">[docs]</a>    <span class="k">def</span> <span class="nf">interpolate_history_data</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">scaling</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;lin&quot;</span><span class="p">,</span> <span class="s2">&quot;lin&quot;</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Creates an interpolation function for (x,y) at `self.interpolation[log, x, y]`.&quot;&quot;&quot;</span>
+
+        <span class="c1"># throw an error if scaling is not a tuple that contains either &#39;lin&#39; or &#39;log&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">scaling</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;scaling must be a tuple.&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="n">scale</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;lin&quot;</span><span class="p">,</span> <span class="s2">&quot;log&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">scale</span> <span class="ow">in</span> <span class="n">scaling</span><span class="p">]):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;scaling must be either &quot;lin&quot; or &quot;log&quot;&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;interpolation&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="n">x_lbl</span> <span class="o">=</span> <span class="s2">&quot;log_&quot;</span> <span class="o">+</span> <span class="n">x</span> <span class="k">if</span> <span class="n">scaling</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;log&quot;</span> <span class="k">else</span> <span class="n">x</span>
+        <span class="n">y_lbl</span> <span class="o">=</span> <span class="s2">&quot;log_&quot;</span> <span class="o">+</span> <span class="n">y</span> <span class="k">if</span> <span class="n">scaling</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;log&quot;</span> <span class="k">else</span> <span class="n">y</span>
+
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">log_key</span><span class="p">,</span> <span class="n">x_lbl</span><span class="p">,</span> <span class="n">y_lbl</span><span class="p">))</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span>
+                <span class="n">x_data</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">scaling</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;lin&quot;</span>
+                    <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+                <span class="p">)</span>
+                <span class="n">y_data</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">scaling</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;lin&quot;</span>
+                    <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">y</span><span class="p">))</span>
+                <span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="p">[</span><span class="n">log_key</span><span class="p">,</span> <span class="n">x_lbl</span><span class="p">,</span> <span class="n">y_lbl</span><span class="p">]</span> <span class="o">=</span> <span class="n">interp1d</span><span class="p">(</span>
+                    <span class="n">x_data</span><span class="p">,</span> <span class="n">y_data</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+                <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.get_relative_difference_of_two_profiles_from_two_logs"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_relative_difference_of_two_profiles_from_two_logs">[docs]</a>    <span class="k">def</span> <span class="nf">get_relative_difference_of_two_profiles_from_two_logs</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">profile_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">log_reference</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">log_compare</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the relative difference of two profiles.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        x : str</span>
+<span class="sd">            The x-axis of the profile.</span>
+<span class="sd">        y : str</span>
+<span class="sd">            The y-axis of the profile.</span>
+<span class="sd">        profile_number : int, optional</span>
+<span class="sd">            The profile number. The default is -1.</span>
+<span class="sd">        log_reference : str, optional</span>
+<span class="sd">            The reference log. The default is None.</span>
+<span class="sd">        log_compare : str, optional</span>
+<span class="sd">            The log that is compared to the reference log. The default is None.</span>
+<span class="sd">        **kwargs : dict</span>
+<span class="sd">            Keyword arguments for `scipy.interpolate.interp1d`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># call the interpolation routine</span>
+        <span class="c1"># if the interpolation object for [log, profile_number, x, y] already exists, then it is not created by the interpolation routine</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">interpolate_profile_data</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># get the x range</span>
+        <span class="c1"># the minimum is the smallest common x value of the reference and compare log</span>
+        <span class="n">x_min</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_reference</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_compare</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+        <span class="c1"># the maximum is the largest common x value of the reference and compare log</span>
+        <span class="n">x_max</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_reference</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_compare</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+        <span class="n">x_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="mi">1000</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;suite&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">log_reference</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">log_compare</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;log_reference and log_compare must be specified.&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">y_reference</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="p">[</span><span class="n">log_reference</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">](</span>
+                    <span class="n">x_values</span>
+                <span class="p">)</span>
+                <span class="n">y_compare</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="p">[</span><span class="n">log_compare</span><span class="p">,</span> <span class="n">profile_number</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">](</span>
+                    <span class="n">x_values</span>
+                <span class="p">)</span>
+                <span class="k">return</span> <span class="n">x_values</span><span class="p">,</span> <span class="p">(</span><span class="n">y_compare</span> <span class="o">-</span> <span class="n">y_reference</span><span class="p">)</span> <span class="o">/</span> <span class="n">y_reference</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s2">&quot;The method &#39;get_relative_difference_of_two_profiles&#39; is currently only supported for a suite of simulations where the log_reference and log_compare are specified.&quot;</span>
+            <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.get_relative_difference_of_two_profiles_from_one_log"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.get_relative_difference_of_two_profiles_from_one_log">[docs]</a>    <span class="k">def</span> <span class="nf">get_relative_difference_of_two_profiles_from_one_log</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">profile_number_reference</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">profile_number_compare</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">log</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the relative difference of two profiles.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        x : str</span>
+<span class="sd">            The x-axis of the profile.</span>
+<span class="sd">        y : str</span>
+<span class="sd">            The y-axis of the profile.</span>
+<span class="sd">        profile_number_reference : int, optional</span>
+<span class="sd">            The reference profile number. The default is -1.</span>
+<span class="sd">        profile_number_compare : int, optional</span>
+<span class="sd">            The profile number that is compared to the reference profile. The default is -1.</span>
+<span class="sd">        log : str, optional</span>
+<span class="sd">            The log. The default is None.</span>
+<span class="sd">        **kwargs : dict</span>
+<span class="sd">            Keyword arguments for `scipy.interpolate.interp1d`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># make sure the interpolation object for [log, profile_number, x, y] exists</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">interpolate_profile_data</span><span class="p">(</span>
+            <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number_reference</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">interpolate_profile_data</span><span class="p">(</span>
+            <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number_compare</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+
+        <span class="c1"># if sim exists, then there is only one log directory</span>
+        <span class="c1"># hence, we can define log</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;sim&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">log</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">log</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sim</span>
+        <span class="c1"># check whether log is a valid log directory</span>
+        <span class="k">elif</span> <span class="n">log</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_dirs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;log must be a valid log directory.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># get the x range</span>
+        <span class="c1"># the minimum is the smallest common x value of the reference and compare log</span>
+        <span class="n">x_min</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number_reference</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number_compare</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+        <span class="c1"># the maximum is the largest common x value of the reference and compare log</span>
+        <span class="n">x_max</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number_reference</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_data</span><span class="p">(</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number_compare</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+        <span class="n">x_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="mi">1000</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">log</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">y_reference</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="p">[</span><span class="n">log</span><span class="p">,</span> <span class="n">profile_number_reference</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">](</span>
+                <span class="n">x_values</span>
+            <span class="p">)</span>
+            <span class="n">y_compare</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">interpolation</span><span class="p">[</span><span class="n">log</span><span class="p">,</span> <span class="n">profile_number_compare</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">](</span><span class="n">x_values</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">x_values</span><span class="p">,</span> <span class="p">(</span><span class="n">y_compare</span> <span class="o">-</span> <span class="n">y_reference</span><span class="p">)</span> <span class="o">/</span> <span class="n">y_reference</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;log must be specified.&quot;</span><span class="p">)</span></div>
+
+    <span class="c1"># ------------------------------ #</span>
+    <span class="c1"># ------- Export Results ------- #</span>
+    <span class="c1"># ------------------------------ #</span>
+
+<div class="viewcode-block" id="Simulation.export_history_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.export_history_data">[docs]</a>    <span class="k">def</span> <span class="nf">export_history_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">columns</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Exports the quantities in `columns` to a csv file.&quot;&quot;&quot;</span>
+
+        <span class="c1"># load the history data of all logs</span>
+        <span class="c1"># and create one joint DataFrame</span>
+        <span class="c1"># where arg_log_key is the column name</span>
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+            <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">log_key</span> <span class="o">==</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                    <span class="p">{</span><span class="n">column</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">log_key</span><span class="p">:</span> <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">column</span><span class="p">)</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">}</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="n">df</span><span class="p">,</span>
+                        <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                            <span class="p">{</span><span class="n">column</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">log_key</span><span class="p">:</span> <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">column</span><span class="p">)</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">}</span>
+                        <span class="p">),</span>
+                    <span class="p">],</span>
+                    <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="p">)</span>
+
+        <span class="c1"># add index = False to kwargs if not specified</span>
+        <span class="k">if</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;index&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;index&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="n">df</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Simulation.export_profile_data"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.export_profile_data">[docs]</a>    <span class="k">def</span> <span class="nf">export_profile_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">columns</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">method</span> <span class="o">=</span> <span class="s1">&#39;profile_number&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Exports the quantities in `columns` to a csv file.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        filename : str</span>
+<span class="sd">            The filename of the csv file.</span>
+<span class="sd">        columns : list[str]</span>
+<span class="sd">            The columns to be exported.</span>
+<span class="sd">        method : str, optional</span>
+<span class="sd">            The method to extract the profile data. The default is &#39;profile_number&#39;. Available options are &#39;profile_number&#39; and &#39;profile_header_condition&#39;.</span>
+<span class="sd">            For &#39;profile_number&#39;, the profile data is extracted at the profile number specified by `profile_number`.</span>
+<span class="sd">            For &#39;profile_header_condition&#39;, the profile data is extracted at the profile number where the profile header `condition` is closest to `value`.</span>
+<span class="sd">        **kwargs : dict</span>
+<span class="sd">            Keyword arguments for `pd.DataFrame.to_csv`.</span>
+
+<span class="sd">        Description</span>
+<span class="sd">        -----------</span>
+<span class="sd">        The routine loads the profile data of all logs and creates one joint DataFrame where arg_log_key is the column name.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; columns = [&#39;mass&#39;, &#39;radius&#39;, &#39;temperature&#39;]</span>
+<span class="sd">        &gt;&gt;&gt; sim.export_profile_data(&#39;profile_data.csv&#39;, columns)</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># load the profile data of all logs</span>
+        <span class="c1"># and create one joint DataFrame</span>
+        <span class="c1"># where arg_log_key is the column name</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;profile_number&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+                <span class="n">profile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;profile_number&quot;</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">log_key</span> <span class="o">==</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]:</span>
+                    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                        <span class="p">{</span><span class="n">column</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">log_key</span><span class="p">:</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">column</span><span class="p">)</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">}</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span>
+                        <span class="p">[</span>
+                            <span class="n">df</span><span class="p">,</span>
+                            <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                                <span class="p">{</span><span class="n">column</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">log_key</span><span class="p">:</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">column</span><span class="p">)</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">}</span>
+                            <span class="p">),</span>
+                        <span class="p">],</span>
+                        <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                    <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;profile_header_condition&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+                <span class="n">profile_number</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_number_at_profile_header_value</span><span class="p">(</span>
+                    <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;condition&quot;</span><span class="p">,</span> <span class="s2">&quot;star_age&quot;</span><span class="p">),</span>
+                    <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">,</span> <span class="mf">4.55e9</span><span class="p">),</span>
+                    <span class="n">log_dir</span><span class="o">=</span><span class="n">log_key</span>
+                <span class="p">)</span>
+                <span class="n">profile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span> <span class="o">=</span> <span class="n">profile_number</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">log_key</span> <span class="o">==</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]:</span>
+                    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                        <span class="p">{</span><span class="n">column</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">log_key</span><span class="p">:</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">column</span><span class="p">)</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">}</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span>
+                        <span class="p">[</span>
+                            <span class="n">df</span><span class="p">,</span>
+                            <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                                <span class="p">{</span><span class="n">column</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">log_key</span><span class="p">:</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">column</span><span class="p">)</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">}</span>
+                            <span class="p">),</span>
+                        <span class="p">],</span>
+                        <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                    <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;method must be either &#39;profile_number&#39; or &#39;profile_header_condition&#39;.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># add index = False to kwargs if not specified</span>
+        <span class="k">if</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;index&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;index&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="n">df</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;profile_number&#39;</span><span class="p">,</span> <span class="s1">&#39;condition&#39;</span><span class="p">,</span> <span class="s1">&#39;value&#39;</span><span class="p">]})</span></div>
+    <span class="c1"># ------------------------------ #</span>
+    <span class="c1"># -------- Plot Results -------- #</span>
+    <span class="c1"># ------------------------------ #</span>
+
+<div class="viewcode-block" id="Simulation.profile_plot"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.profile_plot">[docs]</a>    <span class="k">def</span> <span class="nf">profile_plot</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">profile_number</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">set_labels</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plots the profile data with (x, y) as the axes at `profile_number`.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+            <span class="n">profile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">)</span>
+
+            <span class="c1"># set the label (optional)</span>
+            <span class="k">if</span> <span class="n">set_labels</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;label&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">log_key</span>
+
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="n">y</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ax</span></div>
+
+<div class="viewcode-block" id="Simulation.profile_series_plot"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.profile_series_plot">[docs]</a>    <span class="k">def</span> <span class="nf">profile_series_plot</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">profile_numbers</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+        <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">set_labels</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">log_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plots the profile data with (x, y) as the axes at multiple profile numbers.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">profile_number</span> <span class="ow">in</span> <span class="n">profile_numbers</span><span class="p">:</span>
+            <span class="n">profile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">set_labels</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;label&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">profile</span><span class="o">.</span><span class="n">header_data</span><span class="p">[</span><span class="s1">&#39;star_age&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="n">y</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ax</span></div>
+
+<div class="viewcode-block" id="Simulation.profile_series_plot_at_condition"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.profile_series_plot_at_condition">[docs]</a>    <span class="k">def</span> <span class="nf">profile_series_plot_at_condition</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+        <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">set_labels</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">log_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plots the profile data with (x, y) as the axes at multiple profile numbers where `condition` is `values`.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
+            <span class="n">profile_number</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_profile_number_at_profile_header_value</span><span class="p">(</span>
+                <span class="n">condition</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_dir</span>
+            <span class="p">)</span>
+            <span class="n">profile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">[</span><span class="n">log_dir</span><span class="p">]</span><span class="o">.</span><span class="n">profile_data</span><span class="p">(</span><span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">set_labels</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;label&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_dir</span><span class="p">][</span><span class="n">condition</span><span class="p">][</span><span class="n">profile_number</span><span class="p">]</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">profile</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="n">y</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ax</span></div>
+
+<div class="viewcode-block" id="Simulation.history_plot"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.history_plot">[docs]</a>    <span class="k">def</span> <span class="nf">history_plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">set_labels</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plots the history data with (x, y) as the axes.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+
+            <span class="c1"># set the label (optional)</span>
+            <span class="k">if</span> <span class="n">set_labels</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;label&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">log_key</span>
+
+            <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">histories</span><span class="p">[</span><span class="n">log_key</span><span class="p">]</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="n">y</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ax</span></div>
+
+<div class="viewcode-block" id="Simulation.relative_difference_of_two_profiles_plot"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.relative_difference_of_two_profiles_plot">[docs]</a>    <span class="k">def</span> <span class="nf">relative_difference_of_two_profiles_plot</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">profile_number_reference</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">profile_number_compare</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">log_reference</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">log_compare</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plots the relative difference of two profiles with (x, y) as the axes.</span>
+
+<span class="sd">        The rountine either compares two profiles from the same log, or two profiles from two different logs.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        x : str</span>
+<span class="sd">            The x-axis of the profile.</span>
+<span class="sd">        y : str</span>
+<span class="sd">            The y-axis of the profile.</span>
+<span class="sd">        profile_number_reference : int, optional</span>
+<span class="sd">            The reference profile number. The default is -1.</span>
+<span class="sd">        profile_number_compare : int, optional</span>
+<span class="sd">            The profile number that is compared to the reference profile. The default is None.</span>
+<span class="sd">        log_reference : str, optional</span>
+<span class="sd">            The reference log. The default is None.</span>
+<span class="sd">        log_compare : str, optional</span>
+<span class="sd">            The log that is compared to the reference log. The default is None.</span>
+<span class="sd">        ax : matplotlib.axes, optional</span>
+<span class="sd">            The axes. The default is None.</span>
+<span class="sd">        **kwargs : dict</span>
+<span class="sd">            Keyword arguments for `matplotlib.pyplot.plot`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
+
+        <span class="c1"># in the routine, you either specify log_reference and log_compare, or profile_number_reference and profile_number_compare</span>
+        <span class="c1"># if both, profile_number_compare and log_compare are specified, then the routine raises an error</span>
+        <span class="k">if</span> <span class="n">profile_number_compare</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">log_compare</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;profile_number_compare and log_compare cannot be specified at the same time.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">profile_number_compare</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">x_values</span><span class="p">,</span> <span class="n">y_values</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">get_relative_difference_of_two_profiles_from_one_log</span><span class="p">(</span>
+                    <span class="n">x</span><span class="p">,</span>
+                    <span class="n">y</span><span class="p">,</span>
+                    <span class="n">profile_number_reference</span><span class="o">=</span><span class="n">profile_number_reference</span><span class="p">,</span>
+                    <span class="n">profile_number_compare</span><span class="o">=</span><span class="n">profile_number_compare</span><span class="p">,</span>
+                    <span class="n">log</span><span class="o">=</span><span class="n">log_reference</span><span class="p">,</span>
+                    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">log_compare</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">x_values</span><span class="p">,</span> <span class="n">y_values</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">get_relative_difference_of_two_profiles_from_two_logs</span><span class="p">(</span>
+                    <span class="n">x</span><span class="p">,</span>
+                    <span class="n">y</span><span class="p">,</span>
+                    <span class="n">profile_number</span><span class="o">=</span><span class="n">profile_number_reference</span><span class="p">,</span>
+                    <span class="n">log_reference</span><span class="o">=</span><span class="n">log_reference</span><span class="p">,</span>
+                    <span class="n">log_compare</span><span class="o">=</span><span class="n">log_compare</span><span class="p">,</span>
+                    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;profile_number_compare and log_compare cannot be both None.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">y_values</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">y</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">&quot;Relative difference&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ax</span></div>
+
+<div class="viewcode-block" id="Simulation.mean_profile_sequence_plot"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.mean_profile_sequence_plot">[docs]</a>    <span class="k">def</span> <span class="nf">mean_profile_sequence_plot</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">y</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">m0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">m1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">set_labels</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plots a sequence of mean profile values with (x, y) as the axes.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">x</span> <span class="o">==</span> <span class="s2">&quot;star_age&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_profile_header_sequence</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_mean_profile_value_sequence</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">m0</span><span class="p">,</span> <span class="n">m1</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">y</span> <span class="o">==</span> <span class="s2">&quot;star_age&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_profile_header_sequence</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_mean_profile_value_sequence</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">m0</span><span class="p">,</span> <span class="n">m1</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">log_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logs</span><span class="p">:</span>
+            <span class="n">x_val</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">][</span><span class="s2">&quot;star_age&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">x</span> <span class="o">==</span> <span class="s2">&quot;star_age&quot;</span>
+                <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_profile_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">][</span><span class="n">x</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="n">y_val</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">profile_header_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">][</span><span class="s2">&quot;star_age&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">y</span> <span class="o">==</span> <span class="s2">&quot;star_age&quot;</span>
+                <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_profile_values</span><span class="p">[</span><span class="n">log_key</span><span class="p">][</span><span class="n">y</span><span class="p">]</span>
+            <span class="p">)</span>
+
+            <span class="c1"># set the label (optional)</span>
+            <span class="k">if</span> <span class="n">set_labels</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;label&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">log_key</span>
+
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_val</span><span class="p">,</span> <span class="n">y_val</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">ax</span></div>
+
+    <span class="c1"># ------------------------------ #</span>
+    <span class="c1"># ------- Static Methods ------- #</span>
+    <span class="c1"># ------------------------------ #</span>
+
+<div class="viewcode-block" id="Simulation.mod_file_exists"><a class="viewcode-back" href="../../mesa_helper.html#mesa_helper.Simulation.Simulation.mod_file_exists">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">mod_file_exists</span><span class="p">(</span><span class="n">mod_file</span><span class="o">=</span><span class="s2">&quot;planet_relax_composition.mod&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns True if the mod_file exits.&quot;&quot;&quot;</span>
+        <span class="c1"># test if the file ending is .mod</span>
+        <span class="k">if</span> <span class="n">mod_file</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:]</span> <span class="o">!=</span> <span class="s2">&quot;mod&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;mod_file must end with .mod&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">mod_file</span><span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">PyMesaHelper</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  <li><a href="../mesa_helper.html">mesa_helper</a><ul>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2024, Henrik Knierim.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.0.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

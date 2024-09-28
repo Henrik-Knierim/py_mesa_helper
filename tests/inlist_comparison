@@ -1,0 +1,24 @@
+&controls
+	
+      ! example string
+      log_directory = 'Test'
+
+      ! example float
+      mixing_length_alpha = 0.5d0 
+      
+      ! example boolean
+      use_Ledoux_criterion = .true.
+
+      ! example integer
+      num_cells_for_smooth_gradL_composition_term = 30
+
+      ! example array
+      xa_mesh_delta_coeff(3) = 0.25d0 ! increase resolution if Z is the dominant species
+
+      ! special case x_*_ctrls
+      x_ctrl(1) = 1d0
+      x_integer_ctrl(2) = 0
+      x_logical_ctrl(3) = .true.
+      x_character_ctrl(4) = 'Hello World'
+
+/

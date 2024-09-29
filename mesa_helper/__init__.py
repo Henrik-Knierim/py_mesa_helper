@@ -1,7 +1,7 @@
 from mesa_helper.astrophys import *
 from mesa_helper.Inlist import *
-from mesa_helper.CompositionalGradient import *
-from mesa_helper.rn import rn
+from mesa_helper.CompositionGradient import *
+from mesa_helper.Rn import Rn
 from mesa_helper.Simulation import Simulation
 
 
@@ -87,7 +87,7 @@ def run_inlist_single_value(inlist_name: str, option: str, value, run_exe: str =
     with Inlist(inlist_name) as inlist:
         inlist.set_option(option, value)
         os.system('./' + run_exe)
-        print(f"Ran {inlist.name} with {option} set to {Inlist.fortran_format(value)}.")
+        print(f"Ran {inlist.name} with {option} set to {Inlist._fortran_format(value)}.")
 
 
     # @staticmethod

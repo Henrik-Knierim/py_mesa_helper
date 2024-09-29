@@ -31,6 +31,7 @@ class TestInlist(unittest.TestCase):
         options_to_read = [
             'log_directory',
             'mixing_length_alpha',
+            'lgT_lo_for_set_new_abundances',
             'use_Ledoux_criterion',
             'num_cells_for_smooth_gradL_composition_term',
             'xa_mesh_delta_coeff(3)',
@@ -47,15 +48,7 @@ class TestInlist(unittest.TestCase):
         # Set the options in the inlist instance
         self.inlist.set_multiple_options(**options_to_set)
 
-        # Check if the files are the same
-        # Read both files
-        with open(self.inlist_path, 'r') as file:
-            inlist_content = file.read()
-
-        with open(self.inlist_compare_path, 'r') as file:
-            inlist_compare_content = file.read()
-
-        # Check if the files are the same
+        # Check if the files set the same options
         options_that_have_been_set = {}
         for option in options_to_read:
             options_that_have_been_set[option] = self.inlist.read_option(option)
@@ -74,6 +67,7 @@ class TestInlist(unittest.TestCase):
         with open(self.inlist_compare_path, 'r') as file:
             inlist_compare_content = file.read()
         print(inlist_content)
+        print('\n\n')
         print(inlist_compare_content)
 
     def test_create_logs_path(self):

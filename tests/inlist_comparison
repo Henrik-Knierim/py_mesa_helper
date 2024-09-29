@@ -5,6 +5,9 @@
 
       ! example float
       mixing_length_alpha = 0.5d0 
+
+      ! example zero float
+      lgT_lo_for_set_new_abundances = 0d0
       
       ! example boolean
       use_Ledoux_criterion = .true.

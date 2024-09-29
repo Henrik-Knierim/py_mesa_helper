@@ -1,8 +1,15 @@
 import os
-class rn:
+class Rn:
     """Modifies rn-files"""
 
     def __init__(self, name : str) -> None:
+        """Initializes rn-file modifier.
+
+        Parameters
+        ----------
+        name : str
+            file name of the rn-script
+        """
 
         # name/path to rn script that should be modified
         self.name = name
@@ -19,7 +26,7 @@ class rn:
         # restore original inlist
         self.restore_rn()
 
-    def restore_rn(self):
+    def restore_rn(self) -> None:
         """Restores run script to original version."""
         with open(self.name, 'w') as file:
             file.write(self.original_rn_script)

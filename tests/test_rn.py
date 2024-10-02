@@ -2,7 +2,6 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-print(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
 from mesa_helper import Rn
 
@@ -20,7 +19,7 @@ class TestRn(unittest.TestCase):
 
         # Create the inlist instance that we want to change and compare
         self.rn_path = 'tests/rn'
-        self.rn = Rn(name = self.rn_path)
+        self.rn = Rn(name = self.rn_path, verbose = self.verbose)
 
         self.rn_compare_path = 'tests/rn_comparison'
         self.rn_compare = Rn(name = self.rn_compare_path)

@@ -221,7 +221,7 @@ class Inlist:
         with open(self.name, "w") as file:
             file.writelines(lines)
 
-        print(f"Set {option} to {Inlist._fortran_format(value)}")
+        print(f"Set {option} to {Inlist._fortran_format(value)}") if self.verbose else None
 
     def set_multiple_options(self, **options: OptionType) -> None:
         """Sets multiple options in an inlist file.

@@ -3,6 +3,7 @@ from mesa_helper.Inlist import *
 from mesa_helper.CompositionGradient import *
 from mesa_helper.Rn import Rn
 from mesa_helper.Simulation import Simulation
+from mesa_helper.SimulationSeries import SimulationSeries
 
 
 def create_inital_model(M_p:float, s0 : float = None, R_ini : float = None,

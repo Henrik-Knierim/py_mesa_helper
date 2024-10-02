@@ -17,7 +17,7 @@ from mesa_helper.astrophys import (
 class CompositionGradient:
 
     def __init__(
-        self, gradient: str = "Z", M_p: float = 1.0, iso_net: str = "planets"
+        self, gradient: str = "Z", M_p: float = 1.0, iso_net: str = "planets", verbose: bool = False
     ) -> None:
         """Creates a compositional gradient for a planet.
 
@@ -35,6 +35,8 @@ class CompositionGradient:
             - 'planets' : planets.net, custom network for planets with only h (X), he4 (Y), and o16 (Z)
 
         """
+
+        self.verbose = verbose
 
         # planet mass as input parameter
         self.M_p = M_p
@@ -175,7 +177,7 @@ class CompositionGradient:
                 str_version = [f"{el:.16e}" for el in l]
                 file.write("  ".join(str_version) + "\n")
 
-        print(f"{relax_composition_filename} was created successfully.")
+        print(f"{relax_composition_filename} was created successfully.") if self.verbose else None
 
     # ----------------------------------------- #
     # -------- Compositional Gradients -------- #

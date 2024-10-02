@@ -2,7 +2,7 @@ import os
 class Rn:
     """Modifies rn-files"""
 
-    def __init__(self, name : str) -> None:
+    def __init__(self, name : str, verbose: bool = False) -> None:
         """Initializes rn-file modifier.
 
         Parameters
@@ -10,6 +10,7 @@ class Rn:
         name : str
             file name of the rn-script
         """
+        self.verbose = verbose
 
         # name/path to rn script that should be modified
         self.name = name
@@ -30,7 +31,7 @@ class Rn:
         """Restores run script to original version."""
         with open(self.name, 'w') as file:
             file.write(self.original_rn_script)
-        print("restored inlist to original version")
+        print("restored inlist to original version") if self.verbose else None
 
     def _change_mod_name(self, mod_file_name : str):
         with open(self.name, 'r') as file:
@@ -67,7 +68,7 @@ class Rn:
         with open(self.name, 'w') as file:
             file.writelines(lines)
 
-        print(f"Set mod-file name to {mod_file_name}")
+        print(f"Set mod-file name to {mod_file_name}") if self.verbose else None
 
     def run(self):
         """Runs the rn-script"""

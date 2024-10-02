@@ -4,7 +4,6 @@ import os
 
 from sympy import content
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-print(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
 from mesa_helper import CompositionGradient
 
@@ -21,7 +20,7 @@ class TestCompGrad(unittest.TestCase):
     def setUp(self):
 
         # Create the inlist instance that we want to change and compare
-        self.comp_grad = CompositionGradient(M_p = 0.75)
+        self.comp_grad = CompositionGradient(M_p = 0.75, verbose=self.verbose)
 
         self.comp_grad_file = "tests/comp_gradient.dat"
         self.comp_grad_comparison_file = "tests/comp_gradient_comparison.dat"

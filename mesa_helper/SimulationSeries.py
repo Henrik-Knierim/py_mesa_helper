@@ -6,59 +6,43 @@ import os
 import numpy as np
 import mesa_reader as mr
 import pandas as pd
+from param import Callable
 from mesa_helper.astrophys import M_Jup_in_g
+from mesa_helper.Simulation import Simulation
 from scipy.interpolate import interp1d
 
-
+# Todo: add a method to remove simulations from the class
 class SimulationSeries:
-    """Class for anything related to after the simulation has been run. For example, analyzing, plotting, saving, etc."""
+    """Class for anything related to a series of simulations after they finished. For example, analyzing, plotting, saving, etc."""
 
     def __init__(
         self,
-        parent_dir: str = "./LOGS",
-        suite: str = "",
-        sim: str = "",
-        check_age_convergence=False,
-        delete_horribly_failed_simulations=False,
+        series_dir: str,
+        check_age_convergence = False,
+        delete_horribly_failed_simulations = False,
         **kwargs,
     ) -> None:
         """Initializes the Simulation object.
         Parameters
         ----------
-        parent_dir : str, optional
-            The parent directory of the simulation. The default is './LOGS'.
         suite : str, optional
             The simulation suite. The default is ''.
-        sim : str, optional
-            The simulation. The default is ''.
         check_age_convergence : bool, optional
             If True, then the simulations that do not converge to the final age are removed. The default is True.
         **kwargs : dict
             Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.
         """
+        self.verbose = kwargs.get("verbose", False)
 
-        # parent directory of the simulation
-        self.parent_dir = parent_dir
+        self.series_dir = series_dir
 
-        # simulation suite (if any)
-        if suite != "":
-            self.suite = suite
-            # full relative path to the suite and simulation
-            self.suite_dir = os.path.join(self.parent_dir, self.suite)
-
-        # simulation (if any)
-        if sim != "":
-            self.sim = sim
-
-        if hasattr(self, "suite"):
-            # get the log directories while ignoring hidden directories
-            self.log_dirs = [log_dir for log_dir in os.listdir(self.suite_dir) if not log_dir.startswith('.')]
-            # sort the log directories
-            # maybe you need to modify this if you have multiple suite parameters
-            self.log_dirs.sort()
-
-        if hasattr(self, "sim"):
-            self.sim_dir = os.path.join(self.parent_dir, self.sim)
+        # get the log directories while ignoring hidden directories
+        # TODO: Make this more robust
+        self.log_dirs = [log_dir for log_dir in os.listdir(self.series_dir) if not log_dir.startswith('.')]
+        
+        # sort the log directories
+        # maybe you need to modify this if you have multiple suite parameters
+        self.log_dirs.sort()
 
         # import sim results
         # first, delete horribly failed simulations
@@ -69,68 +53,28 @@ class SimulationSeries:
         )
 
         # then, initialize the mesa logs and histories
-        self._init_mesa_logs()
-        self._init_mesa_histories()
+        self._init_Simulation()
 
         # delete simulations that do not converge to the final age
         # these did not fail horribly, but they did not converge to the final age
         if check_age_convergence:
-            final_age = kwargs.get("final_age", 5e9)
-            self.remove_non_converged_simulations(final_age)
+            final_age = kwargs.get("final_age", None)
 
-        self.n_simulations = len(self.histories)
+        self.n_simulations = len(self.simulations)
 
         # add the simulation parameters to self.results
-        if hasattr(self, "suite"):
-            self.results = pd.DataFrame({"log_dir": self.log_dirs})
-
-        if hasattr(self, "sim"):
-            self.results = pd.DataFrame({"log_dir": [self.sim]})
+        self.results = pd.DataFrame({"log_dir": self.log_dirs})
 
     # create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite
     def __str__(self):
-        if hasattr(self, "suite"):
-            return self.suite
+        return self.series_dir
 
-        elif hasattr(self, "sim"):
-            return self.sim
-        else:
-            Raise(
-                NotImplementedError(
-                    "The simulation does not have a suite or a simulation."
-                )
-            )
+    def _init_Simulation(self) -> None:
+        """Initialzes `Simulation` objects for each log directory in the simulation."""
+        self.simulations = {}
 
-    def _init_mesa_logs(self) -> None:
-        """Initialzes `MesaLogDir` objects for each log directory in the simulation."""
-        self.logs = {}
-        # if we only consider one simulation, then we only have one log directory
-        if hasattr(self, "sim_dir"):
-            self.logs[self.sim] = mr.MesaLogDir(self.sim_dir)
-            # for convenience, we also create a log attribute for the log directory
-            self.log = self.logs[self.sim]
-
-        else:
-            for log_dir in self.log_dirs:
-                self.logs[log_dir] = mr.MesaLogDir(
-                    os.path.join(self.suite_dir, log_dir)
-                )
-
-    def _init_mesa_histories(self) -> None:
-        """Initializes `MesaData` objects for each history file in the simulation."""
-
-        # make sure self.logs exists
-        if not hasattr(self, "logs"):
-            self._init_mesa_logs()
-
-        self.histories = {}
-        for key, log in self.logs.items():
-            self.histories[key] = log.history
-
-        # if we only consider one simulation, then we only have one history file
-        # for convenience, we then also create a history attribute for the history file
-        if hasattr(self, "sim_dir"):
-            self.history = self.histories[self.sim]
+        for log_dir in self.log_dirs:
+            self.simulations[log_dir] = Simulation(log_dir)
 
     @staticmethod
     def extract_value(string, free_param: str):
@@ -152,7 +96,7 @@ class SimulationSeries:
 
         return value
 
-    def get_suite_params(self, free_params):
+    def add_params(self, free_params):
         """Add value of `free_params` to the results DataFrame."""
         # make free_params a list if it is not already
         if type(free_params) != list:
@@ -181,142 +125,105 @@ class SimulationSeries:
     def delete_horribly_failed_simulations(self):
         """Deletes all simulations that have a profiles.index file with less than 2 lines."""
 
-        if hasattr(self, "log_dirs"):
-            for log_dir in self.log_dirs:
-                path_to_profile_index = os.path.join(
-                    self.suite_dir, log_dir, "profiles.index"
-                )
-                if not self._is_profile_index_valid(path_to_profile_index):
-                    os.system(f"rm -r {os.path.join(self.suite_dir, log_dir)}")
-                    self.log_dirs.remove(log_dir)
-
-        else:
-            path_to_profile_index = os.path.join(self.sim_dir, "profiles.index")
+        for log_dir in self.log_dirs:
+            path_to_profile_index = os.path.join(
+                self.series_dir, log_dir, "profiles.index"
+            )
             if not self._is_profile_index_valid(path_to_profile_index):
-                os.system(f"rm -r {self.sim_dir}")
-                self.sim = ""
-                self.log_dirs.remove(self.sim)
+                os.system(f"rm -r {os.path.join(self.series_dir, log_dir)}")
+                self.log_dirs.remove(log_dir)
 
-    def has_conserved_mass_fractions(
-        self, tol=1e-3, starting_model=0, final_model=-1
-    ) -> bool:
-        """Checks if the simulation has conserved mass fractions to a certain tolerance"""
+    def remove(self, log_dir):
+        """Removes the simulation with `log_dir` from the SimulationSeries."""
 
-        mass_keys = ["total_mass_h1", "total_mass_he4", "total_mass_o16"]
+        self.results = self.results[self.results["log_dir"] != log_dir]
+        del self.simulations[log_dir]
+        del self.log_dirs[self.log_dirs.index(log_dir)]
 
-        for key, history in self.histories.items():
+    def apply_filter(self, quantity: str, value: float | int, model_number: int = -1, relative_tolerance: float = 1e-3) -> None:
+        """Filters the SimulationSeries based on a condition."""
+        
+        for log_dir in self.log_dirs:
+            sim = self.simulations[log_dir]
+            fulfils_criterion: bool = sim.check_value(quantity, value, model_number, relative_tolerance)
 
-            dm_h1 = (
-                history.data("total_mass_h1")[final_model]
-                - history.get("total_mass_h1")[starting_model]
-            )
-            dm_he4 = (
-                history.data("total_mass_he4")[final_model]
-                - history.get("total_mass_he4")[starting_model]
-            )
-            dm_o16 = (
-                history.data("total_mass_o16")[final_model]
-                - history.get("total_mass_o16")[starting_model]
-            )
-
-            if abs(dm_h1) > tol or abs(dm_he4) > tol or abs(dm_o16) > tol:
-                return False
-
-        return True
-
-    def has_final_age(self, final_age, tol=1e-3) -> dict:
-        """Checks if the simulation has the final age to a certain tolerance."""
-
-        out = {key: True for key in self.histories}
-        for key, history in self.histories.items():
-
-            if abs(history.data("star_age")[-1] - final_age) > tol:
-                out[key] = False
-
-        return out
-
-    def remove_non_converged_simulations(self, final_age) -> None:
-        """Removes all simulations that do not converge according to the criterion."""
-
-        bools = self.has_final_age(final_age)
-        self.failed_simulations = [key for key, bool in bools.items() if not bool]
-
-        for key, bool in bools.items():
-            if not bool:
-                del self.histories[key]
-                del self.logs[key]
-                del self.log_dirs[self.log_dirs.index(key)]
-
-    def delete_suite(self):
-        """Cleans the logs directory."""
-        os.system(f"rm -r {self.suite_dir}")
-
-    def delete_failed_simulations(self, final_age):
-        """Deletes the failed simulations."""
-        pass
+            if not fulfils_criterion:
+                print(f"Removing {log_dir} from the SimulationSeries.") if self.verbose else None
+                self.remove(log_dir)
+            
 
     # ------------------------------ #
     # ----- Simulation Results ----- #
     # ------------------------------ #
-    def add_history_data(self, history_keys, model=-1, age=None):
-        """Adds `history_key` to `self.results`."""
-        if type(history_keys) != list:
+
+    def merge_results(self, dfs: list[pd.DataFrame]) -> None:
+        """Merges the results of the simulations in `dfs` with the results of the SimulationSeries."""
+
+        combined_df = pd.concat(dfs).groupby("log_dir", as_index=False).first()
+        self.results = pd.merge(self.results, combined_df, on="log_dir", how="left")
+    
+    def add_history_data(
+        self,
+        history_keys: str | list[str],
+        condition: str = "model_number",
+        value: int | float = -1,
+    ) -> None:
+        """Adds `history_keys` to `self.results`.
+
+        Parameters
+        ----------
+        history_keys : str | list[str]
+            The history keys to add to `self.results`. Can either be a string or a list of strings.
+        condition : str, optional
+            The quantity that should be closest to `value`. The default is 'model_number'.
+        value : int | float, optional
+            The value that the quantity should be closest to. The default is -1.
+        """
+
+        if isinstance(history_keys, str):
             history_keys = [history_keys]
+        
+        # remove the history key if it is already in the results
+        for history_key in history_keys:
+            if history_key in self.results.columns:
+                history_keys.remove(history_key)
 
-        if age is None:
-            if model == -1:
-                # add the final model
-                for history_key in history_keys:
-                    out = [
-                        self.histories[log_key].data(history_key)[model]
-                        for log_key in self.results["log_dir"]
-                    ]
-                    self.results[history_key] = out
-            elif isinstance(model, int):
-                for history_key in history_keys:
-                    out = [
-                        self.histories[log_key].data_at_model_number(history_key, model)
-                        for log_key in self.results["log_dir"]
-                    ]
-                    self.results[history_key] = out
-            else:
-                raise TypeError("model must be an integer")
+        print("history_keys = ", history_keys) if self.verbose else None
 
-        elif isinstance(age, (int, float)):
-            # find the model number closest to the age
-            for history_key in history_keys:
-                out = np.zeros(len(self.results["log_dir"]))
-                for i, log_key in enumerate(self.results["log_dir"]):
-                    ages = self.histories[log_key].data("star_age")
-                    parameter = self.histories[log_key].data(history_key)
-                    model = np.argmin(np.abs(ages - age))
-                    out[i] = parameter[model]
-                self.results[history_key] = out
+        for history_key in history_keys:
+            [self.simulations[log_dir].add_history_data(history_key) for log_dir in self.log_dirs]
+            dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
+            filtered_dfs = [df[[col for col in df.columns if col not in self.results.columns or col == 'log_dir']] for df in dfs]
+            print("dfs = ", filtered_dfs) if self.verbose else None
+            self.merge_results(filtered_dfs)
 
-        else:
-            raise TypeError("age must be None or a float")
+    def add_profile_data_at_condition(
+        self,
+        quantity: str,
+        condition: str,
+        value: float,
+        profile_number: int = -1,
+        name = None,
+        **kwargs,
+    ) -> None:
+        """Adds `quantity` to `self.results` where `condition` is closest to `value` of the specified `profile_number`."""
 
-    @staticmethod
-    def integrate_profile(profile, quantity: str, m0: float = 0.0, m1: float = 1.0):
-        """Integrates the profile quantity from m0 to m1 in Jupiter masses."""
-        m_Jup = profile.data("mass_Jup")
-        dm = profile.data("dm")[(m0 < m_Jup) & (m_Jup < m1)] / M_Jup_in_g
-        quantity = profile.data(quantity)[(m0 < m_Jup) & (m_Jup < m1)]
-        return np.dot(dm, quantity)
+        if name is None:
+            name = f"first_{quantity}_at_{condition}_{value}"
 
-    @staticmethod
-    def mean_profile_value(profile, quantity, m0: float = 0.0, m1: float = 1.0):
-        """Integrates the profile quantity from m0 to m1 in Jupiter masses."""
-        m_Jup = profile.data("mass_Jup")
-        dm = profile.data("dm")[(m0 < m_Jup) & (m_Jup < m1)] / M_Jup_in_g
-        quantity = profile.data(quantity)[(m0 < m_Jup) & (m_Jup < m1)]
-        return np.dot(dm, quantity) / np.sum(dm)
+        if name in self.results.columns:
+            return
+        
+        [self.simulations[log_dir].add_profile_data_at_condition(quantity, condition, value, profile_number, name) for log_dir in self.log_dirs]
+        dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
+        filtered_dfs = [df[[col for col in df.columns if col not in self.results.columns or col == 'log_dir']] for df in dfs]
+        self.merge_results(filtered_dfs)
 
     def add_integrated_profile_data(
         self,
         quantity: str,
-        m0: float = 0.0,
-        m1: float = 1.0,
+        q0: float = 0.0,
+        q1: float = 1.0,
         profile_number: int = -1,
         name=None,
     ):

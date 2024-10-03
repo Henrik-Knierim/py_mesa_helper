@@ -13,8 +13,9 @@ from functools import lru_cache
 from typing import Tuple
 
 
+# ? Should I have just one path as an input that leads directly to the simulation directory?
 class Simulation:
-    """Class for anything related to a single simulation has been run. For example, analyzing, plotting, saving, etc."""
+    """Class for anything related to a single simulation that has been run. For example, analyzing, plotting, saving, etc."""
 
     def __init__(
         self,

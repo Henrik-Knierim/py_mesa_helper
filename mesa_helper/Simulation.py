@@ -1,13 +1,16 @@
 # class for anything related to after the simulation has been run
 # for example, analyzing, plotting, saving, etc.
+from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 import os
 import numpy as np
 import mesa_reader as mr
 import pandas as pd
+from param import Callable
 from mesa_helper.astrophys import M_Jup_in_g, M_Sol_in_g, M_Earth_in_g
 from scipy.interpolate import interp1d
 from functools import lru_cache
+from typing import Tuple
 
 
 class Simulation:
@@ -42,7 +45,7 @@ class Simulation:
 
         # then, initialize the mesa logs and histories
         self.log: mr.MesaLogDir = mr.MesaLogDir(self.sim_dir)
-        self.history: mr.MesaData | None = self.log.history
+        self.history: mr.MesaData = self.log.history
 
         # if the history is None, then the simulation did not run successfully
         if self.history is None:
@@ -844,11 +847,37 @@ class Simulation:
         y: str,
         model_number: int = -1,
         profile_number: int = -1,
-        ax=None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
         set_label: bool = False,
         **kwargs
-    ):
-        """Plots the profile data with (x, y) as the axes at `profile_number`."""
+    ) -> Tuple[plt.Figure, Axes]:
+        """Plots the profile data with (x, y) as the axes for a specified profile.
+
+        You can specify the profile either by `model_number` or `profile_number`.
+
+        Parameters
+        ----------
+        x : str
+            The profile quantity for the x-axis.
+        y : str
+            The profile quantity for the y-axis.
+        model_number : int, optional
+            The model number of the profile, by default -1
+        profile_number : int, optional
+            The profile number, by default -1
+        fig : plt.Figure, optional
+            The figure. The default is None.
+        ax : Axes, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+
+        Returns
+        -------
+        Tuple[plt.Figure, Axes]
+            The figure and axes of the plot.
+        """
         if ax is None:
             fig, ax = plt.subplots()
 
@@ -862,7 +891,8 @@ class Simulation:
         ax.plot(data.data(x), data.data(y), **kwargs)
 
         ax.set(xlabel=x, ylabel=y)
-        return ax
+        
+        return fig, ax
 
     def profile_series_plot(
         self,
@@ -870,11 +900,37 @@ class Simulation:
         y: str,
         model_numbers: list[int] | np.ndarray  = [-1],
         profile_numbers: list[int] | np.ndarray = [-1],
-        ax = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
         set_labels: bool = False,
         **kwargs,
     ):
-        """Plots the profile data with (x, y) as the axes at multiple profile numbers."""
+        """Plots the profile data with (x, y) as the axes at multiple profile numbers.
+
+        You can specify the profile either by `model_number` or `profile_number`.
+
+        Parameters
+        ----------
+        x : str
+            The profile quantity for the x-axis.
+        y : str
+            The profile quantity for the y-axis.
+        model_numbers : list[int] | np.ndarray, optional
+            The model numbers to plot. The default is [-1].
+        profile_numbers : list[int] | np.ndarray, optional
+            The profile numbers to plot. The default is [-1].
+        fig : plt.Figure, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_labels : bool, optional
+            If true, add labels to the plot, by default False. The labels are the age of the star.
+
+        Returns
+        -------
+        Tuple[plt.Figure, Axes]
+            The figure and axes of the plot.
+        """
         if ax is None:
             fig, ax = plt.subplots()
 
@@ -895,170 +951,202 @@ class Simulation:
             self.profile_plot(x, y, ax=ax, set_label=set_labels, **kwargs)
 
         ax.set(xlabel=x, ylabel=y)
-        return ax
+        return fig, ax
+    
+    @staticmethod
+    def data_mask(x: np.ndarray, y: np.ndarray, filter_x: Callable | None = None, filter_y: Callable | None = None) -> np.ndarray:
+        """Returns the data mask for the quantities x and y."""
 
-    def profile_series_plot_at_condition(
-        self,
-        x: str,
-        y: str,
-        condition: str,
-        values: list[float],
-        ax=None,
-        set_labels: bool = False,
-        log_dir: str | None = None,
-        **kwargs,
-    ):
-        """Plots the profile data with (x, y) as the axes at multiple profile numbers where `condition` is `values`."""
+        mask_x = np.ones_like(x, dtype=bool) if filter_x is None else filter_x(x)
+        mask_y = np.ones_like(y, dtype=bool) if filter_y is None else filter_y(y)
+
+        return mask_x & mask_y
+        
+
+    def history_plot(self, x: str, y: str, fig: plt.Figure | None = None, ax: Axes | None = None, set_label: bool = False, filter_x: Callable | None = None, filter_y: Callable | None = None, **kwargs):
+        """Plots the history data with (x, y) as the axes.
+        
+        Parameters
+        ----------
+        x : str
+            The x-axis of the history data.
+  
+        y : str
+            The y-axis of the history data.
+
+        fig : plt.Figure, optional  
+            The figure. The default is None.
+
+        ax : Axes, optional
+            The axes. The default is None. If None, a new figure is created.
+
+        set_label : bool, optional
+            If true, add label to plot, by default False
+
+        filter_x : Callable | None, optional
+            A function that filters the x-values. The default is None.
+        
+        filter_y : Callable | None, optional
+            A function that filters the y-values. The default is None.
+
+        **kwargs : dict
+            Keyword arguments for `matplotlib.pyplot.plot`.
+
+        Returns
+        -------
+        Tuple[plt.Figure, Axes]
+            The figure and axes of the plot.
+
+        Examples
+        --------
+        >>> sim.history_plot('star_age', 'Teff', filter_x=lambda x: x < 1e7)
+
+        """
+
         if ax is None:
             fig, ax = plt.subplots()
 
-        for value in values:
-            profile_number = self.get_profile_number_at_profile_header_value(
-                condition, value, log_dir=log_dir
-            )
-            profile = self.logs[log_dir].profile_data(profile_number=profile_number)
-            if set_labels:
-                kwargs["label"] = (
-                    f"{self.profile_header_values[log_dir][condition][profile_number]:.2e}"
-                )
-            ax.plot(profile.data(x), profile.data(y), **kwargs)
+        if set_label:
+            kwargs["label"] = self.sim
+
+        x_values = self.history.data(x)
+        y_values = self.history.data(y)
+        mask = Simulation.data_mask(x_values, y_values, filter_x, filter_y)
+
+        ax.plot(x_values[mask], y_values[mask], **kwargs)
 
         ax.set(xlabel=x, ylabel=y)
-        return ax
 
-    def history_plot(self, x, y, ax=None, set_labels=False, **kwargs):
-        """Plots the history data with (x, y) as the axes."""
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for log_key in self.logs:
-
-            # set the label (optional)
-            if set_labels:
-                kwargs["label"] = log_key
-
-            history = self.histories[log_key]
-            ax.plot(history.data(x), history.data(y), **kwargs)
-
-        ax.set(xlabel=x, ylabel=y)
-        return ax
+        return fig, ax
 
     def relative_difference_of_two_profiles_plot(
         self,
         x: str,
         y: str,
         profile_number_reference: int = -1,
-        profile_number_compare: int = None,
-        log_reference=None,
-        log_compare=None,
-        ax=None,
-        **kwargs,
+        profile_number_compare: int = -1,
+        model_number_reference: int = -1,
+        model_number_compare: int = -1,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        **kwargs
     ):
-        """Plots the relative difference of two profiles with (x, y) as the axes.
-
-        The rountine either compares two profiles from the same log, or two profiles from two different logs.
+        """Plots the relative difference of two profiles using interpolation.
 
         Parameters
         ----------
         x : str
-            The x-axis of the profile.
+            The profile quantity for the x-axis.
         y : str
-            The y-axis of the profile.
+            The profile quantity for the y-axis.
         profile_number_reference : int, optional
             The reference profile number. The default is -1.
         profile_number_compare : int, optional
-            The profile number that is compared to the reference profile. The default is None.
-        log_reference : str, optional
-            The reference log. The default is None.
-        log_compare : str, optional
-            The log that is compared to the reference log. The default is None.
-        ax : matplotlib.axes, optional
-            The axes. The default is None.
-        **kwargs : dict
-            Keyword arguments for `matplotlib.pyplot.plot`.
+            The profile number that is compared to the reference profile. The default is -1.
+        model_number_reference : int, optional
+            The reference model number. The default is -1.
+        model_number_compare : int, optional
+            The model number that is compared to the reference model. The default is -1.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+
+        Returns
+        -------
+        Tuple[plt.Figure, Axes]
+            The figure and axes of the plot.
         """
 
         if ax is None:
             fig, ax = plt.subplots()
 
-        # in the routine, you either specify log_reference and log_compare, or profile_number_reference and profile_number_compare
-        # if both, profile_number_compare and log_compare are specified, then the routine raises an error
-        if profile_number_compare is not None and log_compare is not None:
-            raise ValueError(
-                "profile_number_compare and log_compare cannot be specified at the same time."
-            )
-        elif profile_number_compare is not None:
-            x_values, y_values = (
-                self.get_relative_difference_of_two_profiles_from_one_log(
-                    x,
-                    y,
-                    profile_number_reference=profile_number_reference,
-                    profile_number_compare=profile_number_compare,
-                    log=log_reference,
-                    **kwargs,
-                )
-            )
-        elif log_compare is not None:
-            x_values, y_values = (
-                self.get_relative_difference_of_two_profiles_from_two_logs(
-                    x,
-                    y,
-                    profile_number=profile_number_reference,
-                    log_reference=log_reference,
-                    log_compare=log_compare,
-                    **kwargs,
-                )
-            )
-        else:
-            raise ValueError(
-                "profile_number_compare and log_compare cannot be both None."
-            )
+        if set_label:
+            kwargs["label"] = self.sim
 
-        ax.plot(x_values, y_values, label=y)
-        ax.set(xlabel=x, ylabel="Relative difference")
-        return ax
+        # TODO: Add a label option to show the different ages of the profiles
+
+        x_values, y_values = self.get_relative_difference(
+            x,
+            y,
+            profile_number_reference=profile_number_reference,
+            profile_number_compare=profile_number_compare,
+            model_number_reference=model_number_reference,
+            model_number_compare=model_number_compare,
+            **kwargs,
+        )
+
+        ax.plot(x_values, y_values, **kwargs)
+
+        ax.set(xlabel=x, ylabel=y)
+
+        return fig, ax
 
     def mean_profile_sequence_plot(
         self,
         x: str,
         y: str,
-        m0: float = 0.0,
-        m1: float = 1.0,
-        ax=None,
-        set_labels=False,
-        **kwargs,
+        q0: float = 0.0,
+        q1: float = 1.0,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_labels: bool = False,
+        model_numbers: list[int] | np.ndarray | None = None,
+        profile_numbers: list[int] | np.ndarray | None = None,
+        **kwargs
     ):
         """Plots a sequence of mean profile values with (x, y) as the axes."""
 
         if ax is None:
             fig, ax = plt.subplots()
 
-        if x == "star_age":
-            self.create_profile_header_sequence()
+        # x is often model_number, profile_number, or star_age
+        # We need to deal with all of these cases
+        # TODO: Add a more general method that looks for the header_data or a corresponding history file
+
+        if "star_age" in x:
+            self._create_profile_header_df(x)
+            # in the Pandas.DataFrame, select the x values that are at the model numbers
+            if model_numbers is not None:
+                # if -1 is in model_numbers, replace it with the last model number
+                model_numbers = np.array(model_numbers)
+                model_numbers[model_numbers == -1] = self.log.model_numbers[-1]
+                model_numbers = model_numbers.tolist()
+                print(model_numbers)
+                x_vals = self.profile_header_df.query('model_number == @model_numbers')['star_age']
+                print(x_vals)
+            else:
+                # TODO: Add a method for profile_numbers
+                raise ValueError("If x is 'star_age', then model_numbers must be specified.")
+
+        elif x == "model_number":
+            x_vals = model_numbers
+
+        elif x == "profile_number":
+            x_vals = profile_numbers
+
         else:
-            self.create_mean_profile_value_sequence(x, m0, m1, **kwargs)
+            x_vals = self.get_mean_profile_data_sequence(
+                x,
+                q0=q0,
+                q1=q1,
+                model_numbers=model_numbers,
+                profile_numbers=profile_numbers,
+                **kwargs,
+            )        
 
-        if y == "star_age":
-            self.create_profile_header_sequence()
-        else:
-            self.create_mean_profile_value_sequence(y, m0, m1, **kwargs)
-
-        for log_key in self.logs:
-            x_val = (
-                self.profile_header_values[log_key]["star_age"]
-                if x == "star_age"
-                else self.mean_profile_values[log_key][x]
+        y_vals = self.get_mean_profile_data_sequence(
+                y,
+                q0=q0,
+                q1=q1,
+                model_numbers = model_numbers,
+                profile_numbers = profile_numbers,
+                **kwargs,
             )
-            y_val = (
-                self.profile_header_values[log_key]["star_age"]
-                if y == "star_age"
-                else self.mean_profile_values[log_key][y]
-            )
 
-            # set the label (optional)
-            if set_labels:
-                kwargs["label"] = log_key
+        ax.plot(x_vals, y_vals, **kwargs)
 
-            ax.plot(x_val, y_val, **kwargs)
-
-        return ax
+        return fig, ax

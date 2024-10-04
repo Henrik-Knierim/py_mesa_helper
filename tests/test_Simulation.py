@@ -142,7 +142,7 @@ class TestSimulation(unittest.TestCase):
 
     def test_export_history(self):
         """Tests whether the export_history method works."""
-        self.sim.export_history_data('tests/export_history.csv', ['star_age', 'm_RCB', 's_env'])
+        self.sim.export_history_data(columns = ['star_age', 'm_RCB', 's_env'], filename = 'tests/export_history.csv',)
 
         # read the exported file and the comparison and assess if they are equal
         comparison = pd.read_csv('tests/export_history_comparison.csv')
@@ -155,7 +155,7 @@ class TestSimulation(unittest.TestCase):
 
     def test_export_profile(self):
         """Tests whether the export_profile method works."""
-        self.sim.export_profile_data('tests/export_profile.csv', ['zone', 'entropy'])
+        self.sim.export_profile_data(columns = ['zone', 'entropy'], filename = 'tests/export_profile.csv')
 
         # read the exported file and the comparison and assess if they are equal
         comparison = pd.read_csv('tests/export_profile_comparison.csv')

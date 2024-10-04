@@ -1,15 +1,14 @@
 # class for anything related to after the simulation has been run
 # for example, analyzing, plotting, saving, etc.
-from ast import Raise
+from functools import lru_cache
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import os
 import numpy as np
-import mesa_reader as mr
 import pandas as pd
-from param import Callable
-from mesa_helper.astrophys import M_Jup_in_g
+from typing import Callable, Tuple
 from mesa_helper.Simulation import Simulation
-from scipy.interpolate import interp1d
+
 
 # Todo: add a method to remove simulations from the class
 class SimulationSeries:
@@ -18,8 +17,8 @@ class SimulationSeries:
     def __init__(
         self,
         series_dir: str,
-        check_age_convergence = False,
-        delete_horribly_failed_simulations = False,
+        check_age_convergence=False,
+        delete_horribly_failed_simulations=False,
         **kwargs,
     ) -> None:
         """Initializes the Simulation object.
@@ -38,8 +37,12 @@ class SimulationSeries:
 
         # get the log directories while ignoring hidden directories
         # TODO: Make this more robust
-        self.log_dirs = [log_dir for log_dir in os.listdir(self.series_dir) if not log_dir.startswith('.')]
-        
+        self.log_dirs = [
+            log_dir
+            for log_dir in os.listdir(self.series_dir)
+            if not log_dir.startswith(".")
+        ]
+
         # sort the log directories
         # maybe you need to modify this if you have multiple suite parameters
         self.log_dirs.sort()
@@ -140,17 +143,28 @@ class SimulationSeries:
         del self.simulations[log_dir]
         del self.log_dirs[self.log_dirs.index(log_dir)]
 
-    def apply_filter(self, quantity: str, value: float | int, model_number: int = -1, relative_tolerance: float = 1e-3) -> None:
+    def apply_filter(
+        self,
+        quantity: str,
+        value: float | int,
+        model_number: int = -1,
+        relative_tolerance: float = 1e-3,
+    ) -> None:
         """Filters the SimulationSeries based on a condition."""
-        
+
         for log_dir in self.log_dirs:
             sim = self.simulations[log_dir]
-            fulfils_criterion: bool = sim.check_value(quantity, value, model_number, relative_tolerance)
+            fulfils_criterion: bool = sim.check_value(
+                quantity, value, model_number, relative_tolerance
+            )
 
             if not fulfils_criterion:
-                print(f"Removing {log_dir} from the SimulationSeries.") if self.verbose else None
+                (
+                    print(f"Removing {log_dir} from the SimulationSeries.")
+                    if self.verbose
+                    else None
+                )
                 self.remove(log_dir)
-            
 
     # ------------------------------ #
     # ----- Simulation Results ----- #
@@ -161,7 +175,7 @@ class SimulationSeries:
 
         combined_df = pd.concat(dfs).groupby("log_dir", as_index=False).first()
         self.results = pd.merge(self.results, combined_df, on="log_dir", how="left")
-    
+
     def add_history_data(
         self,
         history_keys: str | list[str],
@@ -182,7 +196,7 @@ class SimulationSeries:
 
         if isinstance(history_keys, str):
             history_keys = [history_keys]
-        
+
         # remove the history key if it is already in the results
         for history_key in history_keys:
             if history_key in self.results.columns:
@@ -191,873 +205,450 @@ class SimulationSeries:
         print("history_keys = ", history_keys) if self.verbose else None
 
         for history_key in history_keys:
-            [self.simulations[log_dir].add_history_data(history_key) for log_dir in self.log_dirs]
+            [
+                self.simulations[log_dir].add_history_data(history_key)
+                for log_dir in self.log_dirs
+            ]
             dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
-            filtered_dfs = [df[[col for col in df.columns if col not in self.results.columns or col == 'log_dir']] for df in dfs]
+            filtered_dfs = [
+                df[
+                    [
+                        col
+                        for col in df.columns
+                        if col not in self.results.columns or col == "log_dir"
+                    ]
+                ]
+                for df in dfs
+            ]
             print("dfs = ", filtered_dfs) if self.verbose else None
             self.merge_results(filtered_dfs)
 
-    def add_profile_data_at_condition(
-        self,
-        quantity: str,
-        condition: str,
-        value: float,
-        profile_number: int = -1,
-        name = None,
-        **kwargs,
-    ) -> None:
-        """Adds `quantity` to `self.results` where `condition` is closest to `value` of the specified `profile_number`."""
-
-        if name is None:
-            name = f"first_{quantity}_at_{condition}_{value}"
-
-        if name in self.results.columns:
-            return
-        
-        [self.simulations[log_dir].add_profile_data_at_condition(quantity, condition, value, profile_number, name) for log_dir in self.log_dirs]
-        dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
-        filtered_dfs = [df[[col for col in df.columns if col not in self.results.columns or col == 'log_dir']] for df in dfs]
-        self.merge_results(filtered_dfs)
-
-    def add_integrated_profile_data(
+    # TODO: Make the function reevaluate if inputs like the mass unit are changed
+    @lru_cache
+    def add_profile_data(
         self,
         quantity: str,
         q0: float = 0.0,
         q1: float = 1.0,
         profile_number: int = -1,
-        name=None,
-    ):
-        """Integrates the profile quantity from m0 to m1 and adds it to `self.results`."""
-        if name is None:
-            integrated_quantity_key = "integrated_" + quantity
-        else:
-            integrated_quantity_key = name
-
-        out = [
-            Simulation.integrate_profile(
-                self.logs[log_key].profile_data(profile_number=profile_number),
-                quantity,
-                m0,
-                m1,
-            )
-            for log_key in self.results["log_dir"]
-        ]
-        self.results[integrated_quantity_key] = out
-
-    def add_mean_profile_data(
-        self,
-        quantity: str,
-        m0: float = 0.0,
-        m1: float = 1.0,
-        profile_number: int = -1,
-        model_number: int = -1,
-        name=None,
-    ):
-        """Computes the mean of the profile quantity from m0 to m1 and adds it to `self.results`."""
-
-        if name is None:
-            integrated_quantity_key = "mean_" + quantity
-        else:
-            integrated_quantity_key = name
-
-        out = [
-            Simulation.mean_profile_value(
-                self.logs[log_key].profile_data(
-                    profile_number=profile_number, model_number=model_number
-                ),
-                quantity,
-                m0,
-                m1,
-            )
-            for log_key in self.results["log_dir"]
-        ]
-        self.results[integrated_quantity_key] = out
-
-    def get_mean_profile_value(
-        self,
-        quantity: str,
-        m0: float = 0.0,
-        m1: float = 1.0,
-        profile_number: int = -1,
-        model_number: int = -1,
-        log_dir=None,
-    ):
-        """Returns the mean of the profile quantity from m0 to m1."""
-        return Simulation.mean_profile_value(
-            self.logs[log_dir].profile_data(
-                profile_number=profile_number, model_number=model_number
-            ),
-            quantity,
-            m0,
-            m1,
-        )
-
-    def get_profile_data(
-        self, quantity: str, profile_number: int = -1, log_dir=None, **kwargs
-    ) -> np.ndarray:
-        """Returns the profile data for `quantity`."""
-
-        if hasattr(self, "sim"):
-            return (
-                self.logs[self.sim]
-                .profile_data(profile_number=profile_number, **kwargs)
-                .data(quantity)
-            )
-
-        elif hasattr(self, "suite"):
-            if log_dir is None:
-                raise ValueError("log_dir must be specified.")
-            else:
-                return (
-                    self.logs[log_dir]
-                    .profile_data(profile_number=profile_number, **kwargs)
-                    .data(quantity)
-                )
-
-        else:
-            raise NotImplementedError(
-                "The method 'get_profile_data' is currently only supported for one simulation or a suite of simulations where the log_dir is specified."
-            )
-
-    def get_profile_data_at_condition(
-        self,
-        quantity: str,
-        condition: str,
-        value: float,
-        profile_number: int = -1,
-        log_dir=None,
+        kind: str = "integrated",
+        name: str | None = None,
+        mass_unit: str = "g",
         **kwargs,
-    ) -> np.float_ | int:
-        """Returns the profile data for `quantity` where `condition` is `value`.
+    ):
+        """Computes the integrated quantity from q0 to q1 and adds it to `self.results`."""
+        if name is None:
+            name = kind + "_" + quantity
 
-        Description
-        -----------
-        The routine finds the index where the condition is satisfied and returns the profile data at that index. It starts from the first index (surface) and moves to the last index (core).
-
-        Parameters
-        ----------
-        quantity : str
-            The quantity of the profile.
-        condition : str
-            The condition of the profile.
-        value : float
-            The value of the condition.
-        profile_number : int, optional
-            The profile number. The default is -1.
-        log_dir : str, optional
-            The log directory. The default is None.
-        **kwargs : dict
-            Keyword arguments for `MesaProfileData`.
-        """
-
-        # throw an error if value is a bool or a string
-        if isinstance(value, (bool, str)):
-            raise ValueError("value must be a float or an integer.")
-
-        condition_data = self.get_profile_data(
-            condition, profile_number, log_dir, **kwargs
-        )
-        index = np.argmin(np.abs(condition_data - value))
-        return self.get_profile_data(quantity, profile_number, log_dir, **kwargs)[index]
-
-    def get_profile_number_at_profile_header_value(
-        self, quantity: str, value: float, log_dir=None, **kwargs
-    ) -> int:
-        """Returns the profile number where the profile header value is `value`."""
-
-        # create the profile_header_values dictionary if it does not exist
-        if not hasattr(self, "profile_header_values"):
-            self.profile_header_values = {}
-
-        # create the profile_header_values dictionary for the log directory if it does not exist
-        if self.profile_header_values.get(log_dir) is None:
-            self.profile_header_values[log_dir] = {}
-
-        # create the profile_header_values dictionary for the quantity if it does not exist
-        if self.profile_header_values[log_dir].get(quantity) is None:
-            self.profile_header_values[log_dir][quantity] = np.array(
-                [
-                    self.logs[log_dir]
-                    .profile_data(profile_number=i, **kwargs)
-                    .header_data[quantity]
-                    for i in self.logs[log_dir].profile_numbers
-                ]
+        [
+            self.simulations[log_dir].add_profile_data(
+                quantity=quantity,
+                q0=q0,
+                q1=q1,
+                profile_number=profile_number,
+                kind=kind,
+                name=name,
+                mass_unit=mass_unit,
             )
+            for log_dir in self.log_dirs
+        ]
+        dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
+        filtered_dfs = [
+            df[
+                [
+                    col
+                    for col in df.columns
+                    if col not in self.results.columns or col == "log_dir"
+                ]
+            ]
+            for df in dfs
+        ]
+        self.merge_results(filtered_dfs)
 
-        return np.argmin(np.abs(self.profile_header_values[log_dir][quantity] - value))
-
+    @lru_cache
     def add_profile_data_at_condition(
         self,
         quantity: str,
         condition: str,
         value: float,
         profile_number: int = -1,
-        name=None,
+        name: str | None = None,
     ) -> None:
-        """Adds the profile data for `quantity` where `condition` is `value` to `self.results`."""
-
-        if name is None:
-            name = f"first_{quantity}_at_{condition}_{value}"
-
-        out = [
-            self.get_profile_data_at_condition(
-                quantity, condition, value, profile_number, log_dir
-            )
-            for log_dir in self.results["log_dir"]
-        ]
-        self.results[name] = out
-
-    def get_profile_header(
-        self, data: str = "star_age", profile_number=-1, log_dir=None, **kwargs
-    ):
-        """Returns the profile header."""
-
-        if hasattr(self, "sim"):
-            return (
-                self.logs[self.sim]
-                .profile_data(profile_number=profile_number, **kwargs)
-                .header_data[data]
-            )
-        elif hasattr(self, "suite"):
-            if log_dir is None:
-                raise ValueError("log_dir must be specified.")
-            else:
-                return (
-                    self.logs[log_dir]
-                    .profile_data(profile_number=profile_number, **kwargs)
-                    .header_data[data]
-                )
-        else:
-            raise NotImplementedError(
-                "The method 'get_profile_header' is currently only supported for one simulation or a suite of simulations where the log_dir is specified."
-            )
-
-    def get_profile_header_sequence_single(
-        self, data: str = "star_age", log_dir=None, profile_numbers: list = [], **kwargs
-    ):
-        """Returns `data` from the profile header for all profile numbers in `profile_numbers` for the log specified by `log_dir`."""
-
-        # if profile_numbers = [], then we consider all profile numbers
-        if profile_numbers == []:
-            profile_numbers = self.logs[log_dir].profile_numbers
-
-        return np.array(
-            [
-                self.logs[log_dir]
-                .profile_data(profile_number=i, **kwargs)
-                .header_data[data]
-                for i in profile_numbers
-            ]
-        )
-
-    def create_profile_header_sequence(self, data: str = "star_age", **kwargs) -> None:
-        "Creates the class attribute `profile_header_values[log_key][data]` for the profile header sequence for all logs."
-
-        # create a numpy array attribute for the profile header values if it does not exist
-        if not hasattr(self, "profile_header_values"):
-            self.profile_header_values = {}
-
-        for log_key in self.logs:
-            # create a dictionary for the log directory if it does not exist
-            if self.profile_header_values.get(log_key) is None:
-                self.profile_header_values[log_key] = {}
-
-            # create a numpy array for the profile header values if it does not exist
-            if self.profile_header_values[log_key].get(data) is None:
-                self.profile_header_values[log_key][data] = (
-                    self.get_profile_header_sequence_single(
-                        data, log_dir=log_key, **kwargs
-                    )
-                )
-            else:
-                # let the user know that the profile header values already exist
-                print(
-                    f"The profile header values for {data} already exist for log {log_key}."
-                )
-
-    def get_mean_profile_value_sequence_single(
-        self,
-        quantity: str,
-        m0: float = 0.0,
-        m1: float = 1.0,
-        profile_numbers: list = [],
-        log_dir=None,
-        **kwargs,
-    ):
-        """Returns the mean of the profile quantity from m0 to m1 for all profile numbers in `profile_numbers` for the log specified by `log_dir`."""
-
-        if profile_numbers == []:
-            profile_numbers = self.logs[log_dir].profile_numbers
-
-        return np.array(
-            [
-                Simulation.mean_profile_value(
-                    self.logs[log_dir].profile_data(profile_number=i, **kwargs),
-                    quantity,
-                    m0,
-                    m1,
-                )
-                for i in profile_numbers
-            ]
-        )
-
-    def create_mean_profile_value_sequence(
-        self, quantity: str, m0: float = 0.0, m1: float = 1.0, **kwargs
-    ) -> None:
-        """Creates the class attribute `mean_profile_values[log_key][quantity]` for the mean profile value sequence for all logs."""
-
-        # create a numpy array attribute for the mean profile values if it does not exist
-        if not hasattr(self, "mean_profile_values"):
-            self.mean_profile_values = {}
-
-        for log_key in self.logs:
-            # create a dictionary for the log directory if it does not exist
-            if self.mean_profile_values.get(log_key) is None:
-                self.mean_profile_values[log_key] = {}
-
-            # create a numpy array for the mean profile values if it does not exist
-            if self.mean_profile_values[log_key].get(quantity) is None:
-                self.mean_profile_values[log_key][quantity] = (
-                    self.get_mean_profile_value_sequence_single(
-                        quantity, m0, m1, log_dir=log_key, **kwargs
-                    )
-                )
-
-            else:
-                # let the user know that the mean profile values already exist
-                print(
-                    f"The mean profile values for {quantity} already exist for log {log_key}."
-                )
-
-    def interpolate_profile_data(
-        self, x: str, y: str, profile_number: int = -1, **kwargs
-    ) -> None:
-        """Creates an interpolation function for (x,y) at `self.interpolation[log, profile_number, x, y]`."""
-
-        # create the interpolation dictionary if it does not exist
-        if not hasattr(self, "interpolation"):
-            self.interpolation = {}
-
-        for log_key in self.logs:
-            # if the interpolation does not exist, create it
-            if self.interpolation.get((log_key, profile_number, x, y)) is None:
-                profile = self.logs[log_key].profile_data(profile_number=profile_number)
-                x_data = profile.data(x)
-                y_data = profile.data(y)
-                self.interpolation[log_key, profile_number, x, y] = interp1d(
-                    x_data, y_data, **kwargs
-                )
-
-    def interpolate_history_data(
-        self, x: str, y: str, scaling=("lin", "lin"), **kwargs
-    ) -> None:
-        """Creates an interpolation function for (x,y) at `self.interpolation[log, x, y]`."""
-
-        # throw an error if scaling is not a tuple that contains either 'lin' or 'log'
-        if not isinstance(scaling, tuple):
-            raise ValueError("scaling must be a tuple.")
-        elif not all([scale in ["lin", "log"] for scale in scaling]):
-            raise ValueError('scaling must be either "lin" or "log"')
-
-        if not hasattr(self, "interpolation"):
-            self.interpolation = {}
-
-        x_lbl = "log_" + x if scaling[0] == "log" else x
-        y_lbl = "log_" + y if scaling[1] == "log" else y
-
-        for log_key in self.logs:
-            if self.interpolation.get((log_key, x_lbl, y_lbl)) is None:
-                history = self.histories[log_key]
-                x_data = (
-                    history.data(x)
-                    if scaling[0] == "lin"
-                    else np.log10(history.data(x))
-                )
-                y_data = (
-                    history.data(y)
-                    if scaling[1] == "lin"
-                    else np.log10(history.data(y))
-                )
-                self.interpolation[log_key, x_lbl, y_lbl] = interp1d(
-                    x_data, y_data, **kwargs
-                )
-
-    def get_relative_difference_of_two_profiles_from_two_logs(
-        self,
-        x: str,
-        y: str,
-        profile_number: int = -1,
-        log_reference=None,
-        log_compare=None,
-        **kwargs,
-    ):
-        """Returns the relative difference of two profiles.
+        """Adds `quantity` to `self.results` where `condition` is closest to `value` of the specified `profile_number`.
 
         Parameters
         ----------
-        x : str
-            The x-axis of the profile.
-        y : str
-            The y-axis of the profile.
+        quantity : str
+            The quantity to add to `self.results`.
+        condition : str
+            The condition that should be closest to `value`.
+        value : float
+            The value that the condition should be closest to.
         profile_number : int, optional
             The profile number. The default is -1.
-        log_reference : str, optional
-            The reference log. The default is None.
-        log_compare : str, optional
-            The log that is compared to the reference log. The default is None.
-        **kwargs : dict
-            Keyword arguments for `scipy.interpolate.interp1d`.
+        name : str, optional
+            The name of the quantity in `self.results`. The default is None.
         """
 
-        # call the interpolation routine
-        # if the interpolation object for [log, profile_number, x, y] already exists, then it is not created by the interpolation routine
-        self.interpolate_profile_data(x, y, profile_number=profile_number, **kwargs)
+        if name is None:
+            name = f"{quantity}_at_{condition}_{value}"
 
-        # get the x range
-        # the minimum is the smallest common x value of the reference and compare log
-        x_min = max(
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number, log_dir=log_reference
-            ).min(),
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number, log_dir=log_compare
-            ).min(),
-        )
-
-        # the maximum is the largest common x value of the reference and compare log
-        x_max = min(
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number, log_dir=log_reference
-            ).max(),
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number, log_dir=log_compare
-            ).max(),
-        )
-
-        x_values = np.linspace(x_min, x_max, 1000)
-
-        if hasattr(self, "suite"):
-            if log_reference is None or log_compare is None:
-                raise ValueError("log_reference and log_compare must be specified.")
-            else:
-                y_reference = self.interpolation[log_reference, profile_number, x, y](
-                    x_values
-                )
-                y_compare = self.interpolation[log_compare, profile_number, x, y](
-                    x_values
-                )
-                return x_values, (y_compare - y_reference) / y_reference
-        else:
-            raise NotImplementedError(
-                "The method 'get_relative_difference_of_two_profiles' is currently only supported for a suite of simulations where the log_reference and log_compare are specified."
+        [
+            self.simulations[log_dir].add_profile_data_at_condition(
+                quantity, condition, value, profile_number, name
             )
+            for log_dir in self.log_dirs
+        ]
+        dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
+        filtered_dfs = [
+            df[
+                [
+                    col
+                    for col in df.columns
+                    if col not in self.results.columns or col == "log_dir"
+                ]
+            ]
+            for df in dfs
+        ]
+        self.merge_results(filtered_dfs)
 
-    def get_relative_difference_of_two_profiles_from_one_log(
+    def get_relative_difference_of_two_simulations(
         self,
         x: str,
         y: str,
+        log_key_reference: str,
+        log_key_compare: str,
         profile_number_reference: int = -1,
         profile_number_compare: int = -1,
-        log=None,
+        model_number_reference: int = -1,
+        model_number_compare: int = -1,
         **kwargs,
-    ):
-        """Returns the relative difference of two profiles.
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Returns the relative difference of two simulations at the same profile number.
 
         Parameters
         ----------
         x : str
-            The x-axis of the profile.
+            The profile quantity on the x-axis.
         y : str
-            The y-axis of the profile.
+            The profile quantity on the y-axis.
+        log_key_reference : str
+            The reference log key.
+        log_key_compare : str
+            The log key that is compared to the reference log.
         profile_number_reference : int, optional
             The reference profile number. The default is -1.
         profile_number_compare : int, optional
             The profile number that is compared to the reference profile. The default is -1.
-        log : str, optional
-            The log. The default is None.
-        **kwargs : dict
-            Keyword arguments for `scipy.interpolate.interp1d`.
+        model_number_reference : int, optional
+            The reference model number. The default is -1.
+        model_number_compare : int, optional
+            The model number that is compared to the reference model. The default is -1.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            First element is a numpy array of x values, second element is the relative difference of the two simulations at these x values.
         """
 
-        # make sure the interpolation object for [log, profile_number, x, y] exists
-        self.interpolate_profile_data(
-            x, y, profile_number=profile_number_reference, **kwargs
+        # reference simulation
+        sim_reference = self.simulations[log_key_reference]
+        f_reference = sim_reference.interpolate_profile_data(
+            x,
+            y,
+            model_number=model_number_reference,
+            profile_number=profile_number_reference,
+            **kwargs,
         )
-        self.interpolate_profile_data(
-            x, y, profile_number=profile_number_compare, **kwargs
+        x_min_reference, x_max_reference = f_reference.x.min(), f_reference.x.max()
+
+        # compare simulation
+        sim_compare = self.simulations[log_key_compare]
+        f_compare = sim_compare.interpolate_profile_data(
+            x,
+            y,
+            model_number=model_number_compare,
+            profile_number=profile_number_compare,
+            **kwargs,
         )
+        x_min_compare, x_max_compare = f_compare.x.min(), f_compare.x.max()
 
-        # if sim exists, then there is only one log directory
-        # hence, we can define log
-        if hasattr(self, "sim") and log is None:
-            log = self.sim
-        # check whether log is a valid log directory
-        elif log not in self.log_dirs:
-            raise ValueError("log must be a valid log directory.")
+        # find the common x values
+        x_min = max(x_min_reference, x_min_compare)
+        x_max = min(x_max_reference, x_max_compare)
 
-        # get the x range
-        # the minimum is the smallest common x value of the reference and compare log
-        x_min = max(
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number_reference, log_dir=log
-            ).min(),
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number_compare, log_dir=log
-            ).min(),
-        )
+        n_bins = kwargs.get("n_bins", 1000)
+        x_scale = kwargs.get("x_scale", "linear")
+        if x_scale == "linear":
+            x_values = np.linspace(x_min, x_max, n_bins)
+        elif x_scale == "log":
+            x_values = np.logspace(np.log10(x_min), np.log10(x_max), n_bins)
 
-        # the maximum is the largest common x value of the reference and compare log
-        x_max = min(
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number_reference, log_dir=log
-            ).max(),
-            self.get_profile_data(
-                quantity=x, profile_number=profile_number_compare, log_dir=log
-            ).max(),
-        )
+        y_reference = f_reference(x_values)
+        y_compare = f_compare(x_values)
 
-        x_values = np.linspace(x_min, x_max, 1000)
+        relative_difference = (y_compare - y_reference) / y_reference
 
-        if log is not None:
-            y_reference = self.interpolation[log, profile_number_reference, x, y](
-                x_values
-            )
-            y_compare = self.interpolation[log, profile_number_compare, x, y](x_values)
-            return x_values, (y_compare - y_reference) / y_reference
-        else:
-            raise ValueError("log must be specified.")
+        return x_values, relative_difference
 
     # ------------------------------ #
     # ------- Export Results ------- #
     # ------------------------------ #
 
-    def export_history_data(self, filename: str, columns: list[str], **kwargs) -> None:
-        """Exports the quantities in `columns` to a csv file."""
+    def export_history_data(
+        self,
+        columns: list[str],
+        file_labeling: Callable[[str], str] | None = None,
+        **kwargs,
+    ) -> None:
+        """Exports the history quantities in `columns` to a csv file for every simulation in the SimulationSeries instance.
 
-        # load the history data of all logs
-        # and create one joint DataFrame
-        # where arg_log_key is the column name
-        for log_key in self.logs:
-            history = self.histories[log_key]
-            if log_key == list(self.logs.keys())[0]:
-                df = pd.DataFrame(
-                    {column + "_" + log_key: history.data(column) for column in columns}
-                )
-            else:
-                df = pd.concat(
-                    [
-                        df,
-                        pd.DataFrame(
-                            {column + "_" + log_key: history.data(column) for column in columns}
-                        ),
-                    ],
-                    axis=1,
-                )
-
-        # add index = False to kwargs if not specified
-        if kwargs.get("index") is None:
-            kwargs["index"] = False
-
-        df.to_csv(filename, **kwargs)
-
-    def export_profile_data(self, filename: str, columns: list[str], method = 'profile_number', **kwargs) -> None:
-        """Exports the quantities in `columns` to a csv file.
-        
         Parameters
         ----------
-        filename : str
-            The filename of the csv file.
         columns : list[str]
             The columns to be exported.
-        method : str, optional
-            The method to extract the profile data. The default is 'profile_number'. Available options are 'profile_number' and 'profile_header_condition'.
-            For 'profile_number', the profile data is extracted at the profile number specified by `profile_number`.
-            For 'profile_header_condition', the profile data is extracted at the profile number where the profile header `condition` is closest to `value`.
+        file_labeling : Callable[[str], str] | None, optional
+            A function that labels the file. The default is None. The input of the function is the simulation key.
         **kwargs : dict
             Keyword arguments for `pd.DataFrame.to_csv`.
-
-        Description
-        -----------
-        The routine loads the profile data of all logs and creates one joint DataFrame where arg_log_key is the column name.
-
-        Examples
-        --------
-        >>> columns = ['mass', 'radius', 'temperature']
-        >>> sim.export_profile_data('profile_data.csv', columns)
-
         """
 
-        # load the profile data of all logs
-        # and create one joint DataFrame
-        # where arg_log_key is the column name
+        if file_labeling is None:
+            file_labeling = lambda x: x
 
-        if method == 'profile_number':
-            for log_key in self.logs:
-                profile = self.logs[log_key].profile_data(profile_number = kwargs.get("profile_number", -1))
-                if log_key == list(self.logs.keys())[0]:
-                    df = pd.DataFrame(
-                        {column + "_" + log_key: profile.data(column) for column in columns}
-                    )
-                else:
-                    df = pd.concat(
-                        [
-                            df,
-                            pd.DataFrame(
-                                {column + "_" + log_key: profile.data(column) for column in columns}
-                            ),
-                        ],
-                        axis=1,
-                    )
-        elif method == 'profile_header_condition':
-            for log_key in self.logs:
-                profile_number = self.get_profile_number_at_profile_header_value(
-                    kwargs.get("condition", "star_age"),
-                    kwargs.get("value", 4.55e9),
-                    log_dir=log_key
-                )
-                profile = self.logs[log_key].profile_data(profile_number = profile_number)
-                if log_key == list(self.logs.keys())[0]:
-                    df = pd.DataFrame(
-                        {column + "_" + log_key: profile.data(column) for column in columns}
-                    )
-                else:
-                    df = pd.concat(
-                        [
-                            df,
-                            pd.DataFrame(
-                                {column + "_" + log_key: profile.data(column) for column in columns}
-                            ),
-                        ],
-                        axis=1,
-                    )
-        else:
-            raise ValueError("method must be either 'profile_number' or 'profile_header_condition'.")
+        for sim in self.simulations.values():
+            filename = file_labeling(sim.sim) + ".csv"
+            sim.export_history_data(columns=columns, filename=filename, **kwargs)
 
-        # add index = False to kwargs if not specified
-        if kwargs.get("index") is None:
-            kwargs["index"] = False
+    def export_profile_data(
+        self,
+        columns: list[str],
+        file_labeling: Callable[[str], str] | None = None,
+        method="index",
+        model_number: int = -1,
+        profile_number: int = -1,
+        condition: str | None = None,
+        value: int | float | None = None,
+        **kwargs,
+    ) -> None:
+        """Exports the profile quantities in `columns` to a csv file for every simulation in the SimulationSeries instance.
 
-        df.to_csv(filename, **{k: v for k, v in kwargs.items() if k not in ['profile_number', 'condition', 'value']})
+        Parameters
+        ----------
+        columns : list[str]
+            The columns to be exported.
+        file_labeling : Callable[[str], str] | None, optional
+            A function that labels the file. The default is None. The input of the function is the simulation key.
+        method : str, optional
+            The method to export the profile data. The default is 'index'.
+        model_number : int, optional
+            The model number. The default is -1.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        condition : str | None, optional
+            The condition that should be closest to `value`. The default is None.
+        value : int | float | None, optional
+            The value that the condition should be closest to. The default is None.
+        """
+        if file_labeling is None:
+            file_labeling = lambda x: x
+
+        for sim in self.simulations.values():
+            filename = file_labeling(sim.sim) + ".csv"
+            sim.export_profile_data(
+                columns=columns,
+                filename=filename,
+                method=method,
+                model_number=model_number,
+                profile_number=profile_number,
+                condition=condition,
+                value = value,
+                **kwargs
+            )
+
     # ------------------------------ #
     # -------- Plot Results -------- #
     # ------------------------------ #
 
     def profile_plot(
-        self, x, y, profile_number=-1, ax=None, set_labels=False, **kwargs
-    ):
-        """Plots the profile data with (x, y) as the axes at `profile_number`."""
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for log_key in self.logs:
-            profile = self.logs[log_key].profile_data(profile_number=profile_number)
-
-            # set the label (optional)
-            if set_labels:
-                kwargs["label"] = log_key
-
-            ax.plot(profile.data(x), profile.data(y), **kwargs)
-
-        ax.set(xlabel=x, ylabel=y)
-        return ax
-
-    def profile_series_plot(
         self,
         x: str,
         y: str,
-        profile_numbers: list = [-1],
-        ax=None,
-        set_labels: bool = False,
-        log_dir: str | None = None,
-        **kwargs,
-    ):
-        """Plots the profile data with (x, y) as the axes at multiple profile numbers."""
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for profile_number in profile_numbers:
-            profile = self.logs[log_dir].profile_data(profile_number=profile_number)
-            if set_labels:
-                kwargs["label"] = f"{profile.header_data['star_age']:.2e}"
-            ax.plot(profile.data(x), profile.data(y), **kwargs)
-
-        ax.set(xlabel=x, ylabel=y)
-        return ax
-
-    def profile_series_plot_at_condition(
-        self,
-        x: str,
-        y: str,
-        condition: str,
-        values: list[float],
-        ax=None,
-        set_labels: bool = False,
-        log_dir: str | None = None,
-        **kwargs,
-    ):
-        """Plots the profile data with (x, y) as the axes at multiple profile numbers where `condition` is `values`."""
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for value in values:
-            profile_number = self.get_profile_number_at_profile_header_value(
-                condition, value, log_dir=log_dir
-            )
-            profile = self.logs[log_dir].profile_data(profile_number=profile_number)
-            if set_labels:
-                kwargs["label"] = (
-                    f"{self.profile_header_values[log_dir][condition][profile_number]:.2e}"
-                )
-            ax.plot(profile.data(x), profile.data(y), **kwargs)
-
-        ax.set(xlabel=x, ylabel=y)
-        return ax
-
-    def history_plot(self, x, y, ax=None, set_labels=False, **kwargs):
-        """Plots the history data with (x, y) as the axes."""
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for log_key in self.logs:
-
-            # set the label (optional)
-            if set_labels:
-                kwargs["label"] = log_key
-
-            history = self.histories[log_key]
-            ax.plot(history.data(x), history.data(y), **kwargs)
-
-        ax.set(xlabel=x, ylabel=y)
-        return ax
-
-    def relative_difference_of_two_profiles_plot(
-        self,
-        x: str,
-        y: str,
-        profile_number_reference: int = -1,
-        profile_number_compare: int = None,
-        log_reference=None,
-        log_compare=None,
-        ax=None,
-        **kwargs,
-    ):
-        """Plots the relative difference of two profiles with (x, y) as the axes.
-
-        The rountine either compares two profiles from the same log, or two profiles from two different logs.
+        model_number: int = -1,
+        profile_number: int = -1,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        **kwargs
+    ) -> Tuple[plt.Figure, Axes]:
+        """Plots the profile data with (x, y) as the axes.
 
         Parameters
         ----------
         x : str
-            The x-axis of the profile.
+            The profile quantity for the x-axis.
         y : str
-            The y-axis of the profile.
-        profile_number_reference : int, optional
-            The reference profile number. The default is -1.
-        profile_number_compare : int, optional
-            The profile number that is compared to the reference profile. The default is None.
-        log_reference : str, optional
-            The reference log. The default is None.
-        log_compare : str, optional
-            The log that is compared to the reference log. The default is None.
-        ax : matplotlib.axes, optional
+            The profile quantity for the y-axis.
+        model_number : int, optional
+            The model number of the series profiles. The default is -1.
+        profile_number : int, optional
+            The profile number of the series profiles. The default is -1.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
             The axes. The default is None.
+        set_label : bool, optional
+            If True, then the label is set. The default is False.
+
+        Returns
+        -------
+        Tuple[plt.Figure, Axes]
+            The figure and the axes.
+        """
+        if ax is None:
+            fig, ax = plt.subplots()
+    
+        for log_key, sim in self.simulations.items():
+            sim.profile_plot(
+                x,
+                y,
+                model_number=model_number,
+                profile_number=profile_number,
+                fig=fig,
+                ax=ax,
+                set_label=set_label,
+                **kwargs,
+            )
+
+        return fig, ax
+
+    def history_plot(self, x: str, y: str, fig: plt.Figure | None = None, ax: Axes | None = None, set_label: bool = False, filter_x: Callable | None = None, filter_y: Callable | None = None, **kwargs):
+        """Plots the history data with (x, y) as the axes.
+        
+        Parameters
+        ----------
+        x : str
+            The x-axis of the history data.
+  
+        y : str
+            The y-axis of the history data.
+
+        fig : plt.Figure, optional  
+            The figure. The default is None.
+
+        ax : Axes, optional
+            The axes. The default is None. If None, a new figure is created.
+
+        set_label : bool, optional
+            If true, add label to plot, by default False
+
+        filter_x : Callable | None, optional
+            A function that filters the x-values. The default is None.
+        
+        filter_y : Callable | None, optional
+            A function that filters the y-values. The default is None.
+
         **kwargs : dict
             Keyword arguments for `matplotlib.pyplot.plot`.
-        """
 
+        Returns
+        -------
+        Tuple[plt.Figure, Axes]
+            The figure and axes of the plot.
+
+        """
         if ax is None:
             fig, ax = plt.subplots()
 
-        # in the routine, you either specify log_reference and log_compare, or profile_number_reference and profile_number_compare
-        # if both, profile_number_compare and log_compare are specified, then the routine raises an error
-        if profile_number_compare is not None and log_compare is not None:
-            raise ValueError(
-                "profile_number_compare and log_compare cannot be specified at the same time."
-            )
-        elif profile_number_compare is not None:
-            x_values, y_values = (
-                self.get_relative_difference_of_two_profiles_from_one_log(
-                    x,
-                    y,
-                    profile_number_reference=profile_number_reference,
-                    profile_number_compare=profile_number_compare,
-                    log=log_reference,
-                    **kwargs,
-                )
-            )
-        elif log_compare is not None:
-            x_values, y_values = (
-                self.get_relative_difference_of_two_profiles_from_two_logs(
-                    x,
-                    y,
-                    profile_number=profile_number_reference,
-                    log_reference=log_reference,
-                    log_compare=log_compare,
-                    **kwargs,
-                )
-            )
-        else:
-            raise ValueError(
-                "profile_number_compare and log_compare cannot be both None."
+        for log_key, sim in self.simulations.items():
+            sim.history_plot(x, y, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y=filter_y, **kwargs)
+
+        return fig, ax
+
+    def relative_difference_of_two_simulations_plot(
+        self,
+        x: str,
+        y: str,
+        log_key_reference: str,
+        log_key_compare: str,
+        profile_number_reference: int = -1,
+        profile_number_compare: int = -1,
+        model_number_reference: int = -1,
+        model_number_compare: int = -1,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        **kwargs
+    ) -> Tuple[plt.Figure, Axes]:
+        """Plots the relative difference of two simulations at the same profile number.
+
+        Parameters
+        ----------
+        x : str
+            The profile quantity on the x-axis.
+        y : str
+            The profile quantity for which the relative difference is calculated.
+        log_key_reference : str
+            The reference log key.
+        log_key_compare : str
+            The log key that is compared to the reference log.
+        profile_number_reference : int, optional
+            The reference profile number. The default is -1.
+        profile_number_compare : int, optional
+            The profile number that is compared to the reference profile. The default
+        model_number_reference : int, optional
+            The reference model number. The default is -1.
+        model_number_compare : int, optional
+            The model number that is compared to the reference model. The default is -1.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+
+        Returns
+        -------
+        Tuple[plt.Figure, Axes]
+            The figure and axes of the plot.
+        """
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        x_data, y_data = self.get_relative_difference_of_two_simulations(
+            x,
+            y,
+            log_key_reference,
+            log_key_compare,
+            profile_number_reference,
+            profile_number_compare,
+            model_number_reference,
+            model_number_compare,
+            **kwargs
             )
 
-        ax.plot(x_values, y_values, label=y)
-        ax.set(xlabel=x, ylabel="Relative difference")
-        return ax
+        ax.plot(x_data, y_data, **kwargs)
+        ax.set_xlabel(x)
+        ax.set_ylabel(f'Relative Difference of {y}')
+
+        return fig, ax
+
 
     def mean_profile_sequence_plot(
         self,
         x: str,
         y: str,
-        m0: float = 0.0,
-        m1: float = 1.0,
-        ax=None,
-        set_labels=False,
-        **kwargs,
+        q0: float = 0.0,
+        q1: float = 1.0,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        model_numbers: list[int] | np.ndarray | None = None,
+        profile_numbers: list[int] | np.ndarray | None = None,
+        **kwargs
     ):
         """Plots a sequence of mean profile values with (x, y) as the axes."""
 
         if ax is None:
             fig, ax = plt.subplots()
 
-        if x == "star_age":
-            self.create_profile_header_sequence()
-        else:
-            self.create_mean_profile_value_sequence(x, m0, m1, **kwargs)
-
-        if y == "star_age":
-            self.create_profile_header_sequence()
-        else:
-            self.create_mean_profile_value_sequence(y, m0, m1, **kwargs)
-
-        for log_key in self.logs:
-            x_val = (
-                self.profile_header_values[log_key]["star_age"]
-                if x == "star_age"
-                else self.mean_profile_values[log_key][x]
-            )
-            y_val = (
-                self.profile_header_values[log_key]["star_age"]
-                if y == "star_age"
-                else self.mean_profile_values[log_key][y]
-            )
-
-            # set the label (optional)
-            if set_labels:
-                kwargs["label"] = log_key
-
-            ax.plot(x_val, y_val, **kwargs)
-
-        return ax
-
-    # ------------------------------ #
-    # ------- Static Methods ------- #
-    # ------------------------------ #
-
-    @staticmethod
-    def mod_file_exists(mod_file="planet_relax_composition.mod"):
-        """Returns True if the mod_file exits."""
-        # test if the file ending is .mod
-        if mod_file[-3:] != "mod":
-            raise ValueError("mod_file must end with .mod")
-        return os.path.isfile(mod_file)
+        for log_key, sim in self.simulations.items():
+            sim.mean_profile_sequence_plot(x, y, q0, q1, fig=fig, ax=ax, model_numbers=model_numbers, profile_numbers=profile_numbers, **kwargs)
+        
+        return fig, ax

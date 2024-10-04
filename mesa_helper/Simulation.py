@@ -6,11 +6,10 @@ import os
 import numpy as np
 import mesa_reader as mr
 import pandas as pd
-from param import Callable
+from typing import Callable, Tuple
 from mesa_helper.astrophys import M_Jup_in_g, M_Sol_in_g, M_Earth_in_g
 from scipy.interpolate import interp1d
 from functools import lru_cache
-from typing import Tuple
 
 
 # ? Should I have just one path as an input that leads directly to the simulation directory?
@@ -756,7 +755,7 @@ class Simulation:
     # ------- Export Results ------- #
     # ------------------------------ #
 
-    def export_history_data(self, filename: str, columns: list[str], **kwargs) -> None:
+    def export_history_data(self, columns: list[str],  filename: str = "history.csv", **kwargs) -> None:
         """Exports the quantities in `columns` to a csv file."""
 
         # get the history data
@@ -770,9 +769,9 @@ class Simulation:
 
     def export_profile_data(
         self,
-        filename: str,
         columns: list[str],
-        method="profile_number",
+        filename: str = "profile_data.csv",
+        method: str = "index",
         model_number: int = -1,
         profile_number: int = -1,
         condition: str | None = None,
@@ -783,13 +782,13 @@ class Simulation:
 
         Parameters
         ----------
-        filename : str
-            The filename of the csv file.
         columns : list[str]
             The columns to be exported.
+        filename : str
+            The filename of the csv file.
         method : str, optional
             The method to extract the profile data. The default is 'profile_number'. Available options are 'profile_number' and 'profile_header_condition'.
-            For 'profile_number', the profile data is extracted at the profile number specified by `profile_number`.
+            For 'index', the profile data is extracted at the profile number specified by `profile_number` or `model_number`.
             For 'profile_header_condition', the profile data is extracted at the profile number where the profile header `condition` is closest to `value`.
         **kwargs : dict
             Keyword arguments for `pd.DataFrame.to_csv`.
@@ -806,16 +805,24 @@ class Simulation:
         """
 
         # get the profile data
-        if method == "profile_number":
+        if method == "index":
             df = pd.DataFrame(
                 {
-                    column: self.log.profile_data(profile_number=profile_number).data(
+                    column: self.log.profile_data(model_number = model_number, profile_number=profile_number).data(
                         column
                     )
                     for column in columns
                 }
             )
+
         elif method == "profile_header_condition":
+
+            # raise an error if condition or value is not specified
+            if condition is None or value is None:
+                raise ValueError(
+                    "condition and value must be specified for method='profile_header_condition'."
+                )
+            
             df = pd.DataFrame(
                 {
                     column: self.get_profile_data_at_header_condition(
@@ -1094,7 +1101,6 @@ class Simulation:
         q1: float = 1.0,
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
-        set_labels: bool = False,
         model_numbers: list[int] | np.ndarray | None = None,
         profile_numbers: list[int] | np.ndarray | None = None,
         **kwargs
@@ -1116,9 +1122,9 @@ class Simulation:
                 model_numbers = np.array(model_numbers)
                 model_numbers[model_numbers == -1] = self.log.model_numbers[-1]
                 model_numbers = model_numbers.tolist()
-                print(model_numbers)
+
                 x_vals = self.profile_header_df.query('model_number == @model_numbers')['star_age']
-                print(x_vals)
+
             else:
                 # TODO: Add a method for profile_numbers
                 raise ValueError("If x is 'star_age', then model_numbers must be specified.")
@@ -1149,5 +1155,6 @@ class Simulation:
             )
 
         ax.plot(x_vals, y_vals, **kwargs)
+        ax.set(xlabel=x, ylabel=f'Mean {y}')
 
         return fig, ax

@@ -17,8 +17,7 @@ class SimulationSeries:
     def __init__(
         self,
         series_dir: str,
-        check_age_convergence=False,
-        delete_horribly_failed_simulations=False,
+        delete_horribly_failed_simulations = False,
         **kwargs,
     ) -> None:
         """Initializes the Simulation object.
@@ -57,11 +56,6 @@ class SimulationSeries:
 
         # then, initialize the mesa logs and histories
         self._init_Simulation()
-
-        # delete simulations that do not converge to the final age
-        # these did not fail horribly, but they did not converge to the final age
-        if check_age_convergence:
-            final_age = kwargs.get("final_age", None)
 
         self.n_simulations = len(self.simulations)
 

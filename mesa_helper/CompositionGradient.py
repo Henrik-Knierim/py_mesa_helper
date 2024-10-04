@@ -17,7 +17,7 @@ from mesa_helper.astrophys import (
 class CompositionGradient:
 
     def __init__(
-        self, gradient: str = "Z", M_p: float = 1.0, iso_net: str = "planets", verbose: bool = False
+        self, gradient: str = "Z", M_p: float = 1.0, iso_net: str = "basic", verbose: bool = False
     ) -> None:
         """Creates a compositional gradient for a planet.
 
@@ -180,7 +180,7 @@ class CompositionGradient:
         print(f"{relax_composition_filename} was created successfully.") if self.verbose else None
 
     # ----------------------------------------- #
-    # -------- Compositional Gradients -------- #
+    # -------- Composition Gradients ---------- #
     # ----------------------------------------- #
 
     @property
@@ -282,39 +282,7 @@ class CompositionGradient:
     def Z_lin_M_z(
         m: np.ndarray, m_1: float, m_2: float, M_z: float, Z_atm: float, **kwargs
     ) -> np.ndarray:
-        """Returns an array of mass fractions for a linear compositional gradient with a fixed slope.
-
-        Parameters
-        ----------
-        m : np.ndarray
-            _description_
-        m_1 : float
-            _description_
-        m_2 : float
-            _description_
-        M_z : float
-            _description_
-        Z_atm : float
-            _description_
-
-        Returns
-        -------
-        np.ndarray
-            _description_
-
-        Raises
-        ------
-        Exception
-            _description_
-        Exception
-            _description_
-        Exception
-            _description_
-        Exception
-            _description_
-        Exception
-            _description_
-        """
+        """Returns an array of mass fractions for a linear compositional gradient with a fixed slope."""
 
         M_z = M_z * M_Earth_in_Jup
         # tests

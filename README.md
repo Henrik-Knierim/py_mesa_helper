@@ -10,4 +10,4 @@ python setup.py install
 ```
 
 ## Usage
-The package comes with three main modules: `inlist`, `CompositionGradient`, and `Simulation`.
+For a quickstarter guide, check out the `examples.ipynb` notebook. A more detailed documentation will follow soon.

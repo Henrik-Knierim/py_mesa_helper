@@ -69,7 +69,7 @@ class Inlist:
 
         """
 
-        src: str = path.join(self.mesa_options_path, f"{section}.defaults")
+        src: str = os.path.join(self.mesa_options_path, f"{section}.defaults")
         with open(src, "r") as file:
             for line in file:
 

@@ -1,5 +1,4 @@
 import numpy as np
-from os import path
 
 # * constants *
 # physics

@@ -1,94 +1,102 @@
 import os
-import re
 import numpy as np
 import shutil
 from mesa_helper.astrophys import *
 from typing import Callable
 
+OptionType = float | bool | str | int | np.floating
 
+
+# TODO: Fix bug where a ! inside a string in an inlist file is not read correctly
 class Inlist:
     """Class for reading and writing inlist files."""
 
-    # keeps track of all instances of Inlist
-    instances: list = []
-
-    def __init__(self, name: str, version: str = "23.05.1") -> None:
+    # TODO: verbose option and debug option
+    def __init__(self, name: str, **kwargs) -> None:
         """Initializes an Inlist object."""
-        # add instance to list of instances
-        self.instances.append(self)
 
         # name of the inlist file
         self.name: str = name
-
-        # version of MESA
-        self.version: str = version
 
         # backup original inlist
         with open(self.name, "r") as file:
             self.original_inlist: str = file.read()
 
-    def __str__(self):
-        return f"Inlist({self.name})"
+        # define path to where the program looks for the MESA options files
+        self._set_mesa_options_path(kwargs.get("mesa_options_path", None))
+
+        # control how much information is printed
+        self.verbose: bool = kwargs.get("verbose", False)
+        self.debug: bool = kwargs.get("debug", False)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return self.name
 
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
 
         # restore original inlist
         self.restore_inlist()
 
-        # delete instance from list of instances
-        self.instances.remove(self)
+    ### *changin options ###
 
-    ### changin options ###
+    def _set_mesa_options_path(self, path: str | None = None) -> None:
+        """Sets path to the MESA options files."""
+        if path is None:
+            try:
+                self.mesa_options_path = os.path.join(
+                    os.environ["MESA_DIR"], "star", "defaults"
+                )
+            except KeyError:
+                raise ValueError("The environment variable $MESA_DIR is not defined.")
+        else:
+            self.mesa_options_path = path
 
-    # checks section of the option
+    def _is_option(self, section: str, option: str) -> bool:
+        """Checks if `option` is in `section` of `MESA`.
 
-    def _optionQ(self, section: str, option: str) -> bool:
-        """Checks if the option is in the given section."""
-        src: str = path.join(resources_dir, self.version, f"{section}.defaults")
+        Parameters
+        ----------
+        section : str
+            Section of the option. For example, 'controls', 'star_job', 'pgstar'.
+        option : str
+            Option to check.
+
+        """
+
+        src: str = os.path.join(self.mesa_options_path, f"{section}.defaults")
         with open(src, "r") as file:
             for line in file:
+
                 # remove whitespace
                 line = line.strip()
+
+                # if the option contains a paranthesis, only check the part before the paranthesis
+                if "(" in option:
+                    option = option.split("(")[0]
+
                 # check if line starts with option
                 if line.startswith(option):
                     return True
         return False
 
-    @staticmethod
-    def _is_x_ctrl(string: str) -> bool:
-        """Check if a string is in the form 'x_ctrl(i)', where i is an integer between 1 and 99."""
-        pattern: str = r"^x_ctrl\((?:[1-9]|[1-9][0-9])\)$"
-        return bool(re.match(pattern, string))
-
-    @staticmethod
-    def _is_x_logical_ctrl(string: str) -> bool:
-        """Check if a string is in the form 'x_logical_ctrl(i)', where i is an integer between 1 and 99."""
-        pattern: str = r"^x_logical_ctrl\((?:[1-9]|[1-9][0-9])\)$"
-        return bool(re.match(pattern, string))
-
     def _get_section_of_option(self, option: str) -> str:
         """Returns the section of an option."""
-        if self._optionQ("controls", option):
+        if self._is_option("controls", option):
             return "&controls"
-        elif self._optionQ("star_job", option):
+        elif self._is_option("star_job", option):
             return "&star_job"
-        elif self._optionQ("pgstar", option):
+        elif self._is_option("pgstar", option):
             return "&pgstar"
-        elif Inlist._is_x_ctrl(
-            option
-        ):  # x_ctrl(i) is a special case not covered by the defaults files
-            return "&controls"
-        elif Inlist._is_x_logical_ctrl(
-            option
-        ):  # x_logical_ctrl(i) is a special case not covered by the defaults files
-            return "&controls"
         else:
-            raise ValueError(f"Option {option} not found in MESA {self.version}.")
+            raise ValueError(f"Option {option} not found.")
 
-    def read_option(self, option: str) -> float | int | str | bool | None:
+    def read_option(self, option: str) -> OptionType | None:
         """Reads the value of an option in an inlist file."""
         with open(self.name, "r") as file:
             lines: list[str] = file.readlines()
@@ -106,15 +114,26 @@ class Inlist:
                     # python formatting
                     out: float | int | str | bool = line_splitted[1].strip()
 
-                    out: float | int | str | bool = Inlist.python_format(out)
+                    out: float | int | str | bool = Inlist._python_format(out)
                     return out
 
         return None
 
-    # finds existing option and changes it to the new value
+    def _change_lines(self, option: str, value) -> list[str]:
+        """Tries to find `option` in the inlist file and changes it to `value`.
 
-    def change_lines(self, option: str, value) -> list[str]:
+        Parameters
+        ----------
+        option : str
+            Option to change.
+        value : _type_
+            Value to set.
 
+        Returns
+        -------
+        list[str]
+            List of lines of the inlist file with the new option value.
+        """
         separator: str = "="
 
         with open(self.name, "r") as file:
@@ -129,7 +148,7 @@ class Inlist:
                     # for ignoring fortran comments after the value
                     line_replace: str = l.replace("!", separator)
 
-                    # after split: 0:option, 1: value, 2: comment (if present)
+                    # after split: 0: option, 1: value, 2: comment (if present)
                     line_splitted: list[str] = line_replace.split(separator)
 
                     # true if the occurence exactly matches with option
@@ -138,9 +157,11 @@ class Inlist:
                         index_option: int = i
 
                         # fortran formatting
-                        out: str = Inlist.fortran_format(value)
+                        out: str = Inlist._fortran_format(value)
 
-                        new_line: str = line_splitted[0] + separator + out + "\n"
+                        new_line: str = (
+                            line_splitted[0] + " " + separator + " " + out + "\n"
+                        )
 
                         break
 
@@ -148,9 +169,8 @@ class Inlist:
 
         return lines
 
-    # create lines with new option
     def _create_lines_explicit_section(
-        self, section: str, option: str, value
+        self, section: str, option: str, value: OptionType
     ) -> list[str]:
         """Creates lines for a new option in an inlist file, where the section is explicitly given."""
         with open(self.name, "r") as file:
@@ -158,7 +178,7 @@ class Inlist:
             lines: list[str] = file.readlines()
 
             # fortran formatting
-            out: str = Inlist.fortran_format(value)
+            out: str = Inlist._fortran_format(value)
 
             for i, l in enumerate(lines):
                 if section in l:
@@ -171,44 +191,78 @@ class Inlist:
 
         return lines
 
-    def create_lines(self, option: str, value) -> list[str]:
-        """Creates lines for a new option in an inlist file."""
+    def _create_lines(self, option: str, value: OptionType) -> list[str]:
+        """Creates lines for an `option` assuming it is not present in the inlist file."""
 
         section: str = self._get_section_of_option(option)
         return self._create_lines_explicit_section(section, option, value)
 
-    # sets options in inlist files
+    def set_option(self, option: str, value: OptionType) -> None:
+        """Sets an option in an inlist file.
 
-    def set_option(self, option: str, value) -> None:
-
+        Parameters
+        ----------
+        option : str
+            The option to set in the inlist file.
+        value : float | int | str | bool
+            The value to set for the option.
+        """
         # conversion such that output is in ''
         if type(value) == str:
             value = f"'{value}'"
 
         # check if the option is already present. If not, create it
         try:
-            lines = self.change_lines(option, value)
+            lines = self._change_lines(option, value)
         except:
-            lines = self.create_lines(option, value)
+            lines = self._create_lines(option, value)
 
         # write new lines into the inlist
         with open(self.name, "w") as file:
             file.writelines(lines)
 
-        print(f"Set {option} to {Inlist.fortran_format(value)}")
+        print(f"Set {option} to {Inlist._fortran_format(value)}") if self.verbose else None
+
+    def set_multiple_options(self, **options: OptionType) -> None:
+        """Sets multiple options in an inlist file.
+
+        Parameters
+        ----------
+        options_dict : dict
+            Dictionary with options of the format {'option_name': option_value, ...}
+
+        Examples
+        --------
+        >>> set_multiple_options({'pgstar_flag': True, 'log_directory': 'LOGS/test'})
+        """
+
+        # go through all options and set them
+        for option_name, option_value in options.items():
+            self.set_option(option_name, option_value)
 
     def restore_inlist(self) -> None:
         """Restores the inlist to its original version."""
         with open(self.name, "w") as file:
             file.write(self.original_inlist)
-        print(f"restored {self} to original version")
+        print(f"restored {self} to original version") if self.verbose else None
 
-    def save_inlist(self) -> None:
-        """Copies the inlist into the LOGS directory of the run."""
-        try:
+    def save_inlist(self, target_directory: str | None = None) -> None:
+        """Copies the inlist into `target_directory`. The default is the `log_directory`."""
+
+        if target_directory is None:
             log_directory: str = os.path.normpath(self.read_option("log_directory"))
+        else:
+            log_directory = target_directory
+
+        try:
             shutil.copy(self.name, log_directory)
-            print(f"saved {self.name} to {self.read_option('log_directory')} directory")
+            (
+                print(
+                    f"saved {self.name} to {self.read_option('log_directory')} directory"
+                )
+                if self.verbose
+                else None
+            )
         except FileNotFoundError:
             raise ValueError(f"The file {self.name} does not exist.")
         except PermissionError:
@@ -218,89 +272,42 @@ class Inlist:
         except Exception as e:
             raise ValueError(f"An unexpected error occurred: {str(e)}")
 
-    # common inlist tasks
-
-    def set_logs_path(self, **kwargs) -> None:
-        """Sets the path for the logs directory.
-
-        Parameters:
-            All parameters are inherited from Inlist.create_logs_path_string()
-
-        Returns:
-            None
-
-        Example usage:
-            set_logs_path(logs_style = 'm_core', m_core = 25.0)
-        """
-        logs_path = Inlist.create_logs_path_string(**kwargs)
-        self.set_option("log_directory", logs_path)
+    ### *common inlist tasks ###
 
     def set_initial_mass_in_M_Jup(self, M_p_in_M_J: float) -> None:
+        """Given the mass of the planet in Jupiter masses, sets the mass of the planet in grams."""
         M_p_in_g: float = M_Jup_in_g * M_p_in_M_J
         self.set_option("mass_in_gm_for_create_initial_model", M_p_in_g)
 
     def set_initial_radius_in_R_Jup(self, R_p_in_R_J: float) -> None:
+        """Given the radius of the planet in Jupiter radii, sets the radius of the planet in centimeters."""
         R_p_in_cm: float = R_Jup_in_cm * R_p_in_R_J
         self.set_option("radius_in_cm_for_create_initial_model", R_p_in_cm)
 
-    def set_initial_entropy_in_kergs(self, M_p: float, s0: float, **kwargs) -> None:
-        """Sets entropy for the inital model
-
-        This function computes the inital radius that approximately corresponds to `s0`.
-        The resulting value is then set for 'radius_in_cm_for_create_initial_model'.
-        """
-        R_ini: float = initial_radius(M_p, s0, **kwargs)
-        R_p_in_cm: float = R_ini * R_Jup_in_cm
-        self.set_option("radius_in_cm_for_create_initial_model", R_p_in_cm)
-
-    def set_convergence_tolerances(
-        self, convergence_tolerances="very_tight", **kwargs
-    ) -> None:
-        """Sets the convergence tolerances of the inlists."""
-
-        tol_correction_norm, tol_max_correction = Inlist.convergence_tolerance_options(
-            convergence_tolerances
-        )
-        self.set_option("tol_correction_norm", tol_correction_norm)
-        self.set_option("tol_max_correction", tol_max_correction)
-
-    @classmethod
-    def restore_all_instances(cls) -> None:
-        for instance in cls.instances:
-            instance.restore_inlist()
-
-        Inlist.delete_all_instances()
-
-    # delete all instances of Inlist
-    @classmethod
-    def delete_all_instances(cls) -> None:
-        """Deletes all instances of Inlist."""
-        cls.instances = []
-
-    @classmethod
-    def delete_latest_instance(cls) -> None:
-        """Deletes the last instance of Inlist."""
-        if cls.instances:
-            cls.instances.pop()
-
     @staticmethod
-    def fortran_format(x: float | bool | str | np.floating) -> str:
-        """Converts a python type to a fortran type"""
-        if isinstance(x, (float, np.floating)):
-
-            # Check if the number is zero float
-            if x == 0.0:
-                return "0d0"
-
-            log: np.floating = np.log10(x)
-            exponent: int = int(np.floor(log))
+    def _fortran_float(value: float|np.floating)-> str:
+        # Check if the number is zero float
+        if value == 0.0:
+            prefactor: float | np.floating = 0.0
+            exponent: int = 0
+            sign: int = 1
+        else:
+            log: np.floating = np.log10(abs(value))
+            exponent = int(np.floor(log))
             prefactor = 10 ** (log - exponent)
+            sign = np.sign(value)
 
-            # Check if the prefactor is an integer or has trailing zeros
-            if prefactor.is_integer():
-                prefactor = int(prefactor)
+        # Check if the prefactor is an integer or has trailing zeros
+        if prefactor.is_integer():
+            prefactor = int(prefactor)
 
-            out = f"{prefactor:.6g}d{exponent}"  # Use the 'g' format specifier
+        return f"{sign*prefactor:.6g}d{exponent}"
+    
+    @staticmethod
+    def _fortran_format(x: float | bool | str | int | np.floating) -> str:
+        """Converts a python input to a fortran output (as str)."""
+        if isinstance(x, (float, np.floating)):
+            out = Inlist._fortran_float(x)
 
         elif isinstance(x, bool):
             if x:
@@ -314,8 +321,8 @@ class Inlist:
         return out
 
     @staticmethod
-    def python_format(x) -> float | int | str | bool:
-        """Converts a fortran number to a python number"""
+    def _python_format(x: str) -> float | int | str | bool:
+        """Converts a fortran input string to a python output."""
         try:
             return int(x)
         except:
@@ -338,7 +345,7 @@ class Inlist:
     @staticmethod
     def _from_style_to_string(style, value) -> str:
         """Converts a style and a value to a string."""
-        if isinstance(value, str):
+        if isinstance(value, (str, int)):
             return f"{style}_{value}"
         else:
             return f"{style}_{value:.2f}"
@@ -359,178 +366,309 @@ class Inlist:
         return out[:-1]
 
     @staticmethod
-    def create_logs_path_string(
-        logs_src: str = "LOGS",
-        suite_dir="",
-        suite_style=None,
-        logs_style=None,
+    def _directory_name_from_no_style(
+        directory: str | None = None, empty_string_is_valid: bool = False
+    ) -> str:
+        """Creates a directory name when no style is given."""
+
+        if directory is None and empty_string_is_valid:
+            return ""
+        elif directory is None:
+            raise ValueError("`directory` must be given if `directory_style` is None.")
+        elif isinstance(directory, str):
+            return directory
+        else:
+            raise ValueError(f"{directory} must be a string.")
+
+    @staticmethod
+    def _directory_name_from_id(
+        inlist_name: str, option: str, index_file_path: str
+    ) -> str:
+        """Creates a directory name based on the id option."""
+        with Inlist(inlist_name) as inlist:
+            value = inlist.read_option(option)
+
+        # write (append) to 'folder_index'
+        path = os.path.join(index_file_path, "folder.index")
+
+        with open(path, "a") as file:
+            lengt_of_file = os.stat(file.name).st_size
+
+            # if file is empty, write header
+            if lengt_of_file == 0:
+                file.write(f"# id\t{option}\n")
+                lengt_of_file = 1
+
+            file.write(f"{lengt_of_file}\t{value}\n")
+
+        return f"{lengt_of_file}"
+
+    @staticmethod
+    def _directory_name_from_str(directory_style: str, **kwargs) -> str:
+        """Creates a directory name based on a style."""
+        directory_value = kwargs.get(directory_style, None)
+        if directory_value is None:
+            raise ValueError(
+                f"{directory_style} must be given if directory_style is {directory_style}"
+            )
+        if isinstance(directory_value, (str, int)):
+            return f"{directory_style}_{directory_value}"
+        elif isinstance(directory_value, float):
+            return f"{directory_style}_{kwargs.get(directory_style, None):.2f}"
+        else:
+            raise ValueError(f"{directory_value} must be a string, integer or a float.")
+
+    @staticmethod
+    def _create_directory_name_from_style(
+        directory_style: str | list[str] | None = None,
         **kwargs,
     ) -> str:
         """
-        Returns the path to the logs directory.
+        Creates a directory name according to the style specified in `directory_style`.
 
-        Parameters:
-            logs_src (str): The parent directory for logs. Default is "LOGS".
-            suite_dir (str): The parent directory for the suite. Default is "".
-            logs_style: Style of logs. Can be None, str, or list.
-                - If None, the 'logs_dir' keyword argument must be provided.
-                - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided.
-                - If 'logs_style' is str, the 'logs_style' keyword argument must be provided,
-                and its value will be appended to the 'logs_dir' in the format 'logs_style_logs_value'.
-                - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings,
-                and the values corresponding to each style will be appended to the 'logs_dir' in the format
-                'style1_value1_style2_value2_...'.
+        Parameters
+        ----------
+        directory_style : str, list of str, or None, optional
+            Variables to define the logs directory structure. Can be None, str, or list.
 
-            **kwargs: Additional keyword arguments that may be required based on the 'logs_style' value.
+        **kwargs
+            Additional keyword arguments that may be required based on the 'directory_style' value.
 
-        Returns:
-            logs_path (str): The path to the logs directory.
+        Returns
+        -------
+        str
+            The path to the logs directory.
 
-        Raises:
-            ValueError: If the required keyword arguments are not provided or if 'logs_style' is an invalid value.
+        Raises
+        ------
+        ValueError
+            If the required keyword arguments are not provided or if 'directory_style' is an invalid value.
 
-        Usage:
-            This method generates a path to the logs directory based on the provided 'logs_style' and additional
-            keyword arguments. It supports different scenarios:
+        Examples
+        --------
+        This method generates a path to the logs directory based on the provided 'directory_style' and additional
+        keyword arguments. It supports different scenarios:
 
-            - If 'logs_style' is None, the 'logs_dir' keyword argument must be provided. The 'logs_dir' will be used
-            as the name of the logs directory.
+        - If 'directory_style' is None, the 'directory' keyword argument must be provided. The 'directory' will be used
+        as the name of the directory.
 
-            - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided. The method
-            will read the value of the specified 'option' from the given MESA inlist file and append it as a new
-            entry to the 'folder.index' file in the logs directory. The 'logs_dir' will be set to the index of
-            the appended entry.
+        - If 'directory_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided. The method
+        will read the value of the specified 'option' from the given MESA inlist file and append it as a new
+        entry to the 'folder.index' file in the logs directory. The 'directory' will be set to the index of
+        the appended entry.
 
-            - If 'logs_style' is str, the 'logs_style' keyword argument must be provided. The method will look for
-            another keyword argument with the same name as the 'logs_style' value. The 'logs_value' will be appended
-            to the 'logs_dir' in the format 'logs_style_logs_value'.
+        - If 'directory_style' is str, the 'directory_style' keyword argument must be provided. The method will look for
+        another keyword argument with the same name as the 'directory_style' value. The 'directory_style' will be appended
+        to the 'directory_style' in the format 'directory_style_logs_value'.
 
-            - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings. The
-            method will look for keyword arguments corresponding to each style in the list. The values will be appended
-            to the 'logs_dir' in the format 'style1_value1_style2_value2_...'.
+        - If 'directory_style' is list, the 'directory_style' keyword argument must be provided as a list of strings. The
+        method will look for keyword arguments corresponding to each variable in the list. The values will be appended
+        to the 'directory' in the format 'var1_value1_var2_value2_...'.
 
-            If any of the required keyword arguments are missing or if 'logs_style' has an invalid value, a ValueError
-            will be raised.
+        If any of the required keyword arguments are missing or if 'directory_style' has an invalid value, a ValueError
+        will be raised.
 
-        Examples:
-            >>> # Example 1: logs_style is None
-            >>> logs_path = Inlist.create_logs_path_string(logs_style=None, logs_dir='test')
-            >>> print(logs_path)
-            LOGS/test
+        Examples
+        --------
+        >>> # Example 1: directory_style is None
+        >>> directory = Inlist._create_directory_name_from_style(directory_style=None, directory='test')
+        >>> print(directory)
+        test
 
-            >>> # Example 2: logs_style is 'id'
-            >>> logs_path = Inlist.create_logs_path_string(logs_style='id', inlist_name='inlist', option='initial_mass')
-            >>> print(logs_path)
-            LOGS/1
+        >>> # Example 2: directory_style is 'id'
+        >>> directory = Inlist._create_directory_name_from_style(folder_style='id', inlist_name='inlist', option='initial_mass')
+        >>> print(directory)
+        1
 
-            >>> # Example 3: logs_style is str
-            >>> logs_path = Inlist.create_logs_path_string(logs_style='initial_mass', initial_mass=1.0)
-            >>> print(logs_path)
-            LOGS/initial_mass_1.0
+        >>> # Example 3: directory_style is str
+        >>> directory = Inlist._create_directory_name_from_style(folder_style='initial_mass', initial_mass=1.0)
+        >>> print(directory)
+        initial_mass_1.0
 
-            >>> # Example 4: logs_style is list
-            >>> logs_path = Inlist.create_logs_path_string(logs_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
-            >>> print(logs_path)
-            LOGS/initial_mass_1.0_metallicity_0.02
+        >>> # Example 4: directory_style is list
+        >>> directory = Inlist._create_directory_name_from_style(folder_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
+        >>> print(directory)
+        initial_mass_1.0_metallicity_0.02
         """
 
-        # define custom suite_dir if suite_style is given
-        if isinstance(suite_style, list):
-            suite_dir = Inlist._from_styles_to_string(suite_style, **kwargs)
-        elif isinstance(suite_style, str):
-            suite_dir = Inlist._from_styles_to_string([suite_style], **kwargs)
-        else:
-            suite_dir = suite_dir
+        # optional arguments
+        verbose = kwargs.get("verbose", False)
+        if verbose:
+            print(Inlist._create_directory_name_from_style.__name__)
+            print(f"\tkwargs", *kwargs)
 
-        if logs_style is None:
-            # get logs_dir
-            logs_dir = kwargs.get("logs_dir", None)
-            if logs_dir is None:
-                raise ValueError("logs_dir must be given if logs_style is None.")
+        # directory name directly given as an argument
+        if directory_style is None:
+            print("\tdirectory_style is None") if verbose else None
+            directory = Inlist._directory_name_from_no_style(
+                kwargs.get("directory", None),
+                kwargs.get("empty_string_is_valid", False),
+            )
 
-        elif logs_style == "id":
+        # name by id
+        elif directory_style == "id":
 
             # get inlist and option
-            inlist_name = kwargs.get("inlist_name", None)
-            option = kwargs.get("option", None)
+            inlist_name: str | None = kwargs.get("inlist_name", None)
+            option: str | None = kwargs.get("option", None)
+            index_file_path: str | None = kwargs.get("index_file_path", None)
 
             # tests
-            if option is None:
-                raise ValueError("option must be given if logs_style is 'id'.")
-            if inlist_name is None:
-                raise ValueError("inlist_name must be given if logs_style is 'id'.")
+            for arg in [inlist_name, option, index_file_path]:
+                if not isinstance(arg, str):
+                    raise ValueError(f"{arg} must be a string.")
 
-            with Inlist(inlist_name) as inlist:
-                value = inlist.read_option(option)
+            directory = Inlist._directory_name_from_id(
+                inlist_name, option, index_file_path
+            )
 
-            # write (append) to 'folder_index'
-            path = os.path.join(logs_src, "folder.index")
+        elif isinstance(directory_style, str):
+            directory = Inlist._directory_name_from_str(directory_style, **kwargs)
 
-            with open(path, "a") as file:
-                lengt_of_file = os.stat(file.name).st_size
-
-                # if file is empty, write header
-                if lengt_of_file == 0:
-                    file.write(f"# id\t{option}\n")
-                    lengt_of_file = 1
-
-                file.write(f"{lengt_of_file}\t{value}\n")
-
-            logs_dir = f"{lengt_of_file}"
-
-        elif isinstance(logs_style, str):
-            # get logs_dir
-            logs_value = kwargs.get(logs_style, None)
-            if logs_value is None:
-                raise ValueError(
-                    f"{logs_style} must be given if logs_style is {logs_style}"
-                )
-            if isinstance(logs_value, (str,int)):
-                logs_dir = f"{logs_style}_{logs_value}"
-            elif isinstance(logs_value, float):
-                logs_dir = f"{logs_style}_{kwargs.get(logs_style, None):.2f}"
-            else:
-                raise ValueError(f"{logs_value} must be a string, integer or a float.")
-
-        elif isinstance(logs_style, list):
-            logs_dir = Inlist._from_styles_to_string(logs_style, **kwargs)
+        elif isinstance(directory_style, list):
+            directory = Inlist._from_styles_to_string(directory_style, **kwargs)
 
         else:
             raise ValueError(
-                f"logs_style must be None, str, or list. Got {logs_style}."
+                f"logs_style must be None, str, or list. Got {directory_style}."
             )
 
-        logs_path = os.path.join(logs_src, suite_dir, logs_dir)
+        print(f"\tdirectory = {directory}") if verbose else None
+        return directory
+
+    @staticmethod
+    def create_logs_path(
+        logs_parent_dir: str = "LOGS",
+        logs_style: str | list[str] | None = None,
+        series_style: str | list[str] | None = None,
+        **kwargs,
+    ) -> str:
+        """
+        Creates a path for the output of the MESA simulations.
+
+        This method generates a path to the logs directory based on the provided 'logs_style' and additional
+        keyword arguments. It supports different scenarios:
+
+        - If 'logs_style' is None, the 'logs_dir' keyword argument must be provided. The 'logs_dir' will be used
+        as the name of the logs directory.
+
+        - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided. The method
+        will read the value of the specified 'option' from the given MESA inlist file and append it as a new
+        entry to the 'folder.index' file in the logs directory. The 'logs_dir' will be set to the index of
+        the appended entry.
+
+        - If 'logs_style' is str, the 'logs_style' keyword argument must be provided. The method will look for
+        another keyword argument with the same name as the 'logs_style' value. The 'logs_value' will be appended
+        to the 'logs_dir' in the format 'logs_style_logs_value'.
+
+        - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings. The
+        method will look for keyword arguments corresponding to each variable in the list. The values will be appended
+        to the 'logs_dir' in the format 'var1_value1_var2_value2_...'.
+
+        If any of the required keyword arguments are missing or if 'logs_style' has an invalid value, a ValueError
+        will be raised.
+
+        The same logic applies to the 'series_style' keyword argument, which is used to define the directory for a series
+
+        Parameters
+        ----------
+        logs_parent_dir : str, optional
+            The parent directory for logs. Default is "LOGS".
+        logs_style : str, list of str, or None, optional
+            Variables to define the logs directory structure. Can be None, str, or list.
+            - If None, the 'logs_dir' keyword argument must be provided.
+            - If 'logs_style' is 'id', the 'inlist_name' and 'option' keyword arguments must be provided.
+            - If 'logs_style' is str, the 'logs_style' keyword argument must be provided,
+            and its value will be appended to the 'logs_dir' in the format 'logs_style_logs_value'.
+            - If 'logs_style' is list, the 'logs_style' keyword argument must be provided as a list of strings,
+            and the values corresponding to each variable will be appended to the 'logs_dir' in the format
+            'var1_value1_var2_value2_...'.
+        series_dir : str or None, optional
+            The directory for the series of simulations. Default is None.
+        series_style : str, list of str, or None, optional
+            Variables to define the directory for a series of simulations. Can be None, str, or list. Follows the same logic as 'logs_style'.
+        **kwargs
+            Additional keyword arguments that may be required based on the 'logs_style' value.
+
+        Returns
+        -------
+        str
+            The path to the logs directory.
+
+        Raises
+        ------
+        ValueError
+            If the required keyword arguments are not provided or if 'logs_style' is an invalid value.
+
+        Examples
+        --------
+
+        >>> # Example 1: logs_style is None
+        >>> logs_path = Inlist.create_logs_path(logs_style=None, logs_dir='test')
+        >>> print(logs_path)
+        LOGS/test
+
+        >>> # Example 2: logs_style is 'id'
+        >>> logs_path = Inlist.create_logs_path(logs_style='id', inlist_name='inlist', option='initial_mass')
+        >>> print(logs_path)
+        LOGS/1
+
+        >>> # Example 3: logs_style is str
+        >>> logs_path = Inlist.create_logs_path(logs_style='initial_mass', initial_mass=1.0)
+        >>> print(logs_path)
+        LOGS/initial_mass_1.0
+
+        >>> # Example 4: logs_style is list
+        >>> logs_path = Inlist.create_logs_path(logs_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
+        >>> print(logs_path)
+        LOGS/initial_mass_1.0_metallicity_0.02
+        """
+
+        # get the series directory
+        directory = kwargs.get("series_dir", None)
+        series_dir = Inlist._create_directory_name_from_style(
+            series_style,
+            index_file_path=logs_parent_dir,
+            empty_string_is_valid=True,
+            directory=directory,
+            **kwargs,
+        )
+
+        # get the logs directory
+        parent_dir = series_dir if series_dir != "" else logs_parent_dir
+        directory = kwargs.get("logs_dir", None)
+        logs_dir = Inlist._create_directory_name_from_style(
+            logs_style, index_file_path=parent_dir, directory=directory, **kwargs
+        )
+
+        logs_path = os.path.join(logs_parent_dir, series_dir, logs_dir)
 
         return logs_path
 
+    def set_logs_path(self, **kwargs) -> None:
+        """
+        Sets the path for the logs directory.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            All parameters are inherited from `Inlist.create_logs_path_string()`.
+
+        Returns
+        -------
+        None
+
+        Examples
+        --------
+        >>> set_logs_path(logs_style='m_core', m_core=25.0)
+        # sets the log directory to 'LOGS/m_core_25.0'
+        """
+        logs_path = Inlist.create_logs_path(**kwargs)
+        self.set_option("log_directory", logs_path)
+
+    # ? Do we need this function?
     @staticmethod
-    def convergence_tolerance_options(convergence_tolerances: str) -> list:
-        """Returns common convergence tolerances."""
-        if convergence_tolerances == "very_tight":
-            tol_correction_norm = 1e-4
-            tol_max_correction = 3e-2
-
-        elif convergence_tolerances == "tight":
-            tol_correction_norm = 1e-4
-            tol_max_correction = 8e-2
-
-        elif convergence_tolerances == "medium":
-            tol_correction_norm = 1e-3
-            tol_max_correction = 8e-2
-
-        elif convergence_tolerances == "loose":
-            tol_correction_norm = 1e-2
-            tol_max_correction = 3e-1
-
-        elif convergence_tolerances == "very_loose":
-            tol_correction_norm = 5e-2
-            tol_max_correction = 5e-1
-
-        return [tol_correction_norm, tol_max_correction]
-
-    @staticmethod
-    def set_multiple_options(options_dict: dict) -> None:
+    def set_multiple_options_for_multiple_inlists(options_dict: dict) -> None:
         """Sets options in multiple inlist files.
 
         Initializes inlist objects and sets the options accordingly.
@@ -570,7 +708,7 @@ class Inlist:
         s = specific_entropy(s_kerg)
         with open(relax_entropy_filename, "w") as file:
             file.write("1\n")
-            file.write(f"1  {Inlist.fortran_format(s)}")
+            file.write(f"1  {Inlist._fortran_format(s)}")
         print(f"Created entropy profile with s_kerg = {s_kerg}")
 
     @staticmethod

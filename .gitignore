@@ -2,4 +2,5 @@ __pycache__
 .DS_Store
 build/
 dist/
+tests/
 *.egg-info/

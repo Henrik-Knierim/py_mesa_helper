@@ -2,6 +2,7 @@ import os
 import numpy as np
 import shutil
 from mesa_helper.astrophys import *
+from mesa_helper.utils import *
 from typing import Callable
 
 OptionType = float | bool | str | int | np.floating
@@ -283,6 +284,28 @@ class Inlist:
         """Given the radius of the planet in Jupiter radii, sets the radius of the planet in centimeters."""
         R_p_in_cm: float = R_Jup_in_cm * R_p_in_R_J
         self.set_option("radius_in_cm_for_create_initial_model", R_p_in_cm)
+
+    # Todo: test this function
+    def set_initial_abundances(self, gradient: str, value: float, scaling: Callable | None = None) -> None:
+
+        # check if gradient is 'Y' or 'Z'
+        validate_option(gradient, ["Y", "Z"])
+
+        if scaling is None and gradient == "Z":
+            scaling = lambda Z: scaled_solar_ratio_mass_fractions(Z=value)
+
+        elif scaling is None and gradient == "Y":
+            scaling = lambda Y: (1-Y, Y, 0.0)
+
+        elif scaling is None:
+            # something went wrong
+            raise ValueError("scaling must be given if gradient is not 'Y' or 'Z'.")
+            
+        X, Y, Z = scaling(value)
+
+        self.set_option("initial_z", Y)
+        self.set_option("initial_y", Z)
+
 
     @staticmethod
     def _fortran_float(value: float|np.floating)-> str:
@@ -665,6 +688,16 @@ class Inlist:
         """
         logs_path = Inlist.create_logs_path(**kwargs)
         self.set_option("log_directory", logs_path)
+
+    @staticmethod
+    def create_model_filename(**kwargs) -> str:
+        """Creates a model filename using the functionality from `create_logs_path`."""
+        
+        mod_parent_dir = kwargs.get("parent_dir", "")
+        mod_file  = Inlist.create_logs_path(logs_parent_dir = mod_parent_dir, **kwargs)
+        mod_file += ".mod"
+
+        return mod_file
 
     # ? Do we need this function?
     @staticmethod

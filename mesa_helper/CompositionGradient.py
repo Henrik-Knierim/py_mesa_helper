@@ -3,6 +3,9 @@
 import numpy as np
 from scipy.special import erf
 from typing import Callable
+from matplotlib.axes import Axes
+import matplotlib.pyplot as plt
+
 from mesa_helper.astrophys import (
     scaled_solar_ratio_mass_fractions,
     X_Sol,
@@ -919,3 +922,32 @@ class CompositionGradient:
             )
 
         return c[-1]
+    
+    @staticmethod
+    def plot_relax_composition_file(
+        file: str,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        ):
+        """Plots the composition file."""
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        q, X, Y, Z = np.loadtxt(file, unpack=True, skiprows=1)
+        m_over_M_p = 1.0 - q
+        ax.plot(m_over_M_p, X, label="X")
+        ax.plot(m_over_M_p, Y, label="Y")
+        ax.plot(m_over_M_p, Z, label="Z")
+        ax.set_xlabel(r"$m/M$")
+        ax.set_ylabel("Mass Fraction")
+        ax.legend()
+
+        return fig, ax
+    
+    @staticmethod
+    def compute_heavy_metal_mass(file: str):
+        """Computes the heavy metal mass from the composition file."""
+        q, X, Y, Z = np.loadtxt(file, unpack=True, skiprows=1)
+        m_over_M_p = 1.0 - q
+        return np.trapz(Z[::-1], m_over_M_p[::-1])
+

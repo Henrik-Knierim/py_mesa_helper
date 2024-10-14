@@ -71,7 +71,12 @@ class SimulationSeries:
         self.simulations = {}
 
         for log_dir in self.log_dirs:
-            self.simulations[log_dir] = Simulation(log_dir)
+            
+            if self.verbose:
+                print("_init_Simulation: parent_dir = ", self.series_dir)
+                print("_init_Simulation: simulation_dir = ", log_dir)
+
+            self.simulations[log_dir] = Simulation(simulation_dir = log_dir, parent_dir=self.series_dir)
 
     @staticmethod
     def extract_value(string, free_param: str):

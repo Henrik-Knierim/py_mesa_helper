@@ -3,10 +3,10 @@ from mesa_helper.Rn import Rn
 import os
 
 # TODO: Test this class
-class NumericalExperiment(Inlist, Rn):
+class NumericalExperiment:
     """Modifies rn-files and inlists"""
 
-    def __init__(self, inlist_name: str, rn_name: str, verbose: bool = False) -> None:
+    def __init__(self, inlist_name: str, rn_name: str, verbose: bool = False, **kwargs) -> None:
         """Initializes inlist and rn-file modifier.
 
         Parameters
@@ -17,21 +17,21 @@ class NumericalExperiment(Inlist, Rn):
             file name of the rn-script
         """
 
-        Inlist.__init__(self, inlist_name, verbose)
-        Rn.__init__(self, rn_name, verbose)
+        self.inlist = Inlist(inlist_name, verbose = verbose, **kwargs)
+        self.rn = Rn(rn_name, verbose = verbose, **kwargs)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.restore_inlist()
-        self.restore_rn()
+        self.inlist.restore_inlist()
+        self.rn.restore_rn()
 
     def rename_save_mod_file(self, save_model_filename: str) -> None:
         """Renames the `save_model_filename` and adjusts the rn-file accordingly."""
 
-        self.set_mod_name(save_model_filename)
-        self.set_option("save_model_filename", save_model_filename)
+        self.rn.set_mod_name(save_model_filename)
+        self.inlist.set_option("save_model_filename", save_model_filename)
 
     def evolve(
         self,
@@ -54,15 +54,15 @@ class NumericalExperiment(Inlist, Rn):
             If True, saves the inlist, by default False
         """
 
-        self.set_multiple_options(**options)
+        self.inlist.set_multiple_options(**options)
 
         # if `save_model_filename` is in the options, call `rename_save_mod_file`
         if "save_model_filename" in options:
             self.rename_save_mod_file(options["save_model_filename"])
 
-        self.run(do_restart=do_restart, photo=photo)
+        self.rn.run(do_restart=do_restart, photo=photo)
 
-        self.save_inlist() if save_inlist else None
+        self.inlist.save_inlist() if save_inlist else None
 
     def evolve_with_logs_style(
         self,
@@ -70,7 +70,6 @@ class NumericalExperiment(Inlist, Rn):
         photo: str | None = None,
         save_inlist: bool = False,
         save_final_model: bool = False,
-        save_final_photo: bool = False,
         logs_parent_dir: str = "LOGS",
         logs_style: str | list[str] | None = None,
         series_style: str | list[str] | None = None,
@@ -96,13 +95,10 @@ class NumericalExperiment(Inlist, Rn):
         # try to get the save_model_filename and change the output path
         # ! Currently, this will produce an error if the save_model_filename neither in the options nor in the inlist
         # ! I need to modify the read_option method to return the default value if the key is not found
-        save_model_filename = options.get("save_model_filename", self.read_option("save_model_filename"))
-        options["save_model_filename"] = os.path.join(logs_dir, save_model_filename) if save_model_filename else None
+        if save_final_model:
+            save_model_filename = options.get("save_model_filename", self.inlist.read_option("save_model_filename"))
+            options["save_model_filename"] = os.path.join(logs_dir, save_model_filename) if save_model_filename else None
 
-        # save the final photo if requested
-        if save_final_photo:
-            options['save_photo_when_terminate'] = True
-            options['filename_for_photo_when_terminate'] = logs_dir + '/final_photo'
 
         self.evolve(do_restart = do_restart, photo = photo, save_inlist = save_inlist, **options)
 

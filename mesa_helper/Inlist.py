@@ -152,15 +152,19 @@ class Inlist:
         list[str]
             List of lines of the inlist file with the new option value.
         """
+        print(f"\nEnter _change_lines") if self.verbose else None
         separator: str = "="
 
         with open(self.name, "r") as file:
 
             lines: list[str] = file.readlines()
+            if self.debug:
+                for i, l in enumerate(lines):
+                    print(f"\tLine {i}: {l}")
 
             for i, l in enumerate(lines):
                 if option in l:
-
+                    print(f"\tFound option {option} in line {i}") if self.verbose else None
                     # test if this is in fact the right option
 
                     # for ignoring fortran comments after the value
@@ -171,6 +175,8 @@ class Inlist:
 
                     # true if the occurence exactly matches with option
                     is_option: bool = line_splitted[0].strip() == option
+                    print(f"\tIs option: {is_option}") if self.verbose else None
+
                     if is_option:
                         index_option: int = i
 
@@ -225,21 +231,28 @@ class Inlist:
         value : float | int | str | bool
             The value to set for the option.
         """
+        print(f"\nEnter set_option") if self.verbose else None
+        print(f"\tOption: {option}, Value: {value}") if self.verbose else None
+
         # conversion such that output is in ''
         if type(value) == str:
+            print(f"\tModify `value` because it is a string.") if self.verbose else None
             value = f"'{value}'"
 
         # check if the option is already present. If not, create it
         try:
+            print(f"\tTry to change lines") if self.verbose else None
             lines = self._change_lines(option, value)
         except:
+            print(f"\tCreate lines") if self.verbose else None
             lines = self._create_lines(option, value)
 
         # write new lines into the inlist
+        print(f"\tWrite new lines into the inlist") if self.verbose else None
         with open(self.name, "w") as file:
             file.writelines(lines)
 
-        print(f"Set {option} to {Inlist._fortran_format(value)}") if self.verbose else None
+        print(f"\tSet {option} to {Inlist._fortran_format(value)}\n") if self.verbose else None
 
     def set_multiple_options(self, **options: OptionType) -> None:
         """Sets multiple options in an inlist file.

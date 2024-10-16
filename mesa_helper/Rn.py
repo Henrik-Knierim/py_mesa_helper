@@ -2,7 +2,7 @@ import os
 class Rn:
     """Modifies rn-files"""
 
-    def __init__(self, name : str, verbose: bool = False) -> None:
+    def __init__(self, name : str, verbose: bool = False, **kwargs) -> None:
         """Initializes rn-file modifier.
 
         Parameters
@@ -11,6 +11,7 @@ class Rn:
             file name of the rn-script
         """
         self.verbose = verbose
+        self.debug = kwargs.get("debug", False)
 
         # name/path to rn script that should be modified
         self.name = name

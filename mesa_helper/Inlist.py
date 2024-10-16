@@ -12,8 +12,7 @@ OptionType = float | bool | str | int | np.floating
 class Inlist:
     """Class for reading and writing inlist files."""
 
-    # TODO: verbose option and debug option
-    def __init__(self, name: str, **kwargs) -> None:
+    def __init__(self, name: str, verbose: bool = False, **kwargs) -> None:
         """Initializes an Inlist object."""
 
         # name of the inlist file
@@ -24,10 +23,11 @@ class Inlist:
             self.original_inlist: str = file.read()
 
         # define path to where the program looks for the MESA options files
+        self._set_mesa_path(kwargs.get("mesa_path", None))
         self._set_mesa_options_path(kwargs.get("mesa_options_path", None))
 
         # control how much information is printed
-        self.verbose: bool = kwargs.get("verbose", False)
+        self.verbose: bool = verbose
         self.debug: bool = kwargs.get("debug", False)
 
     def __str__(self) -> str:
@@ -45,20 +45,29 @@ class Inlist:
         self.restore_inlist()
 
     ### *changin options ###
+    def _set_mesa_path(self, path: str | None = None) -> None:
+        """Sets path to the MESA executable."""
+        if path is None:
+            try:
+                self.mesa_path = os.environ["MESA_DIR"]
+            except KeyError:
+                raise ValueError("The environment variable $MESA_DIR is not defined.")
+        else:
+            self.mesa_path = path
 
     def _set_mesa_options_path(self, path: str | None = None) -> None:
         """Sets path to the MESA options files."""
         if path is None:
             try:
                 self.mesa_options_path = os.path.join(
-                    os.environ["MESA_DIR"], "star", "defaults"
+                    self.mesa_path, "star", "defaults"
                 )
             except KeyError:
-                raise ValueError("The environment variable $MESA_DIR is not defined.")
+                raise ValueError("self.mesa_path is not defined.")
         else:
             self.mesa_options_path = path
 
-    def _is_option(self, section: str, option: str) -> bool:
+    def _is_option(self, section: str, option: str, mesa_option_dir: str | None = None) -> bool:
         """Checks if `option` is in `section` of `MESA`.
 
         Parameters
@@ -70,7 +79,10 @@ class Inlist:
 
         """
 
-        src: str = os.path.join(self.mesa_options_path, f"{section}.defaults")
+        mesa_option_dir = self.mesa_options_path if mesa_option_dir is None else mesa_option_dir
+        
+        src = os.path.join(mesa_option_dir, f"{section}.defaults")
+
         with open(src, "r") as file:
             for line in file:
 
@@ -94,6 +106,10 @@ class Inlist:
             return "&star_job"
         elif self._is_option("pgstar", option):
             return "&pgstar"
+        elif self._is_option("eos", option, mesa_option_dir = os.path.join(self.mesa_path, "eos", "defaults")):
+            return "&eos"
+        elif self._is_option("kap", option, mesa_option_dir = os.path.join(self.mesa_path, "kap", "defaults")):
+            return "&kap"
         else:
             raise ValueError(f"Option {option} not found.")
 

@@ -563,6 +563,96 @@ class SimulationSeries:
             sim.history_plot(x, y, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y=filter_y, **kwargs)
 
         return fig, ax
+    
+    def history_composition_plot(
+        self,
+        x: str | list,
+        y: str | list,
+        x_function: Callable | None = None,
+        y_function: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ):
+        """Plots y_numerator / y_denominator as a function of x for the history data.
+
+        Parameters
+        ----------
+        x : str | list
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `x_function`.
+        y : str | list
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `y_function`.
+        x_function : Callable | None, optional
+            A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
+        y_function : Callable | None, optional
+            A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        filter_x : Callable | list[Callable] | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            A function that filters the y-values. The default is None.
+
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for sim in self.simulations.values():
+            sim.history_composition_plot(
+                x,
+                y,
+                x_function=x_function,
+                y_function=y_function,
+                fig=fig,
+                ax=ax,
+                set_label=set_label,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **kwargs,
+            )
+
+        return fig, ax
+    
+    def history_ratio_plot(self, x: str, y_numerator: str, y_denominator: str, fig: plt.Figure | None = None, ax: Axes | None = None, set_label: bool = False, filter_x: Callable | None = None, filter_y_numerator: Callable | None = None, filter_y_denominator: Callable | None = None, **kwargs):
+        """Plots y_numerator / y_denominator as a function of x for the history data.
+
+        Parameters
+        ----------
+        x : str
+            The x-axis of the history data.
+        y_numerator : str
+            The history quantatiy that's the numerator of the ratio.
+        y_denominator : str
+            The history quantatiy that's the denominator of the ratio.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        filter_x : Callable | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y_numerator : Callable | None, optional
+            A function that filters the y_numerator-values. The default is None.
+        filter_y_denominator : Callable | None, optional
+            A function that filters the y_denominator-values. The default is None.
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for sim in self.simulations.values():
+            sim.history_ratio_plot(x, y_numerator, y_denominator, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y_numerator=filter_y_numerator, filter_y_denominator=filter_y_denominator, **kwargs)
+
+        return fig, ax
 
     def relative_difference_of_two_simulations_plot(
         self,

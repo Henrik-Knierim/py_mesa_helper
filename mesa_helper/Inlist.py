@@ -97,6 +97,7 @@ class Inlist:
         else:
             raise ValueError(f"Option {option} not found.")
 
+    # TODO: return the default value if the option is not found
     def read_option(self, option: str) -> OptionType | None:
         """Reads the value of an option in an inlist file."""
         with open(self.name, "r") as file:
@@ -229,12 +230,12 @@ class Inlist:
 
         Parameters
         ----------
-        options_dict : dict
-            Dictionary with options of the format {'option_name': option_value, ...}
+        options: int | float | str | bool
+            The options to set in the inlist file. These are given as keyword arguments.
 
         Examples
         --------
-        >>> set_multiple_options({'pgstar_flag': True, 'log_directory': 'LOGS/test'})
+        >>> set_multiple_options(mesh_delta_coeff=0.1, log_directory='LOGS/test')
         """
 
         # go through all options and set them

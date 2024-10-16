@@ -178,7 +178,9 @@ class CompositionGradient:
             file.write(f"{num_points}  {num_species}\n")
             for l in comp_list:
                 str_version = [f"{el:.16e}" for el in l]
-                file.write("  ".join(str_version) + "\n")
+                line = "  ".join(str_version) + "\n"
+                print(f"create_relax_initial_composition: line = {line}") if self.verbose else None
+                file.write(line)
 
         print(f"{relax_composition_filename} was created successfully.") if self.verbose else None
 

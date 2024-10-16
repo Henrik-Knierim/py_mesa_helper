@@ -70,6 +70,12 @@ class Rn:
 
         print(f"Set mod-file name to {mod_file_name}") if self.verbose else None
 
-    def run(self):
+    def run(self, do_restart : bool = False, photo : str | None = None) -> None:
         """Runs the rn-script"""
-        os.system(f'./{self.name}')
+        
+        if do_restart and photo is not None:
+            os.system(f"./re {photo}")
+        elif do_restart:
+            os.system("./re")
+        else:
+            os.system(f'./{self.name}')

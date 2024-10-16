@@ -1,5 +1,6 @@
 import os
-from typing import Any
+from typing import Any, Callable
+import numpy as np
 
 def validate_file(filename):
     """Check if a file exists and is valid."""
@@ -45,3 +46,22 @@ def clean(
         if logs_path is None:
             raise ValueError("logs_path is not defined.")
         os.system(f"rm -r {logs_path}")
+
+def single_data_mask(data: np.ndarray, mask_function: Callable | None = None) -> np.ndarray:
+    """Returns the data mask for the quantity x."""
+
+    if mask_function is None:
+        return np.ones_like(data, dtype=bool)
+
+    return mask_function(data)
+
+def multiple_data_mask(keys: list[np.ndarray], mask_filters: list[Callable | None] | None = None) -> np.ndarray:
+    """Returns the data mask for the quantities in keys."""
+
+    mask = np.ones_like(keys[0], dtype=bool)
+    if mask_filters is None:
+        return mask
+
+    for key, filter in zip(keys, mask_filters):
+        mask &= (mask if filter is None else filter(key))
+    return mask

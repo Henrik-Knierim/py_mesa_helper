@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from typing import Callable, Tuple
 from mesa_helper.Simulation import Simulation
+from mesa_helper.utils import sort_list_by_variable
 
 
 # Todo: add a method to remove simulations from the class
@@ -18,6 +19,7 @@ class SimulationSeries:
         self,
         series_dir: str,
         delete_horribly_failed_simulations = False,
+        key_to_sort: str | None = None,
         **kwargs,
     ) -> None:
         """Initializes the Simulation object.
@@ -27,6 +29,8 @@ class SimulationSeries:
             The simulation suite. The default is ''.
         check_age_convergence : bool, optional
             If True, then the simulations that do not converge to the final age are removed. The default is True.
+        key_to_sort : str, optional
+            The key to sort the simulations by. If none, then sorts for the first free parameter. The default is None.
         **kwargs : dict
             Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.
         """
@@ -43,8 +47,7 @@ class SimulationSeries:
         ]
 
         # sort the log directories
-        # maybe you need to modify this if you have multiple suite parameters
-        self.log_dirs.sort()
+        self.log_dirs = sort_list_by_variable(self.log_dirs, key_to_sort)
 
         # import sim results
         # first, delete horribly failed simulations
@@ -180,6 +183,7 @@ class SimulationSeries:
         history_keys: str | list[str],
         condition: str = "model_number",
         value: int | float = -1,
+        key_names: str | list[str] | None = None
     ) -> None:
         """Adds `history_keys` to `self.results`.
 
@@ -191,21 +195,32 @@ class SimulationSeries:
             The quantity that should be closest to `value`. The default is 'model_number'.
         value : int | float, optional
             The value that the quantity should be closest to. The default is -1.
+        key_names : str | list[str] | None, optional
+            The names of the results columns. If None, then the history keys are used. The default is None.
         """
 
         if isinstance(history_keys, str):
             history_keys = [history_keys]
 
+        if key_names is None:
+            key_names = history_keys
+        elif isinstance(key_names, str) and len(history_keys) == 1:
+            key_names = [key_names]
+        elif len(key_names) != len(history_keys):
+            raise ValueError("key_names must have the same length as history_keys.")
+        
         # remove the history key if it is already in the results
-        for history_key in history_keys:
-            if history_key in self.results.columns:
+        # also remove the key name if it is already in the results
+        for key_name, history_key in zip(key_names, history_keys):
+            if key_name in self.results.columns:
                 history_keys.remove(history_key)
+                key_names.remove(key_name)
 
         print("history_keys = ", history_keys) if self.verbose else None
 
         for history_key in history_keys:
             [
-                self.simulations[log_dir].add_history_data(history_key)
+                self.simulations[log_dir].add_history_data(history_key, condition, value, key_name)
                 for log_dir in self.log_dirs
             ]
             dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]

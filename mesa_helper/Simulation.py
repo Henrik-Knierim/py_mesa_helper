@@ -227,7 +227,8 @@ class Simulation:
         history_keys: str | list[str],
         condition: str = "model_number",
         value: int | float = -1,
-    ) -> None:
+        key_names: str | list[str] | None = None
+        ) -> None:
         """Adds `history_keys` to `self.results`.
 
         Parameters
@@ -238,17 +239,26 @@ class Simulation:
             The quantity that should be closest to `value`. The default is 'model_number'.
         value : int | float, optional
             The value that the quantity should be closest to. The default is -1.
+        key_names : str | list[str] | None, optional
+            The names of the results columns. If None, then the history keys are used. The default is None.
         """
 
         history_keys = [history_keys] if isinstance(history_keys, str) else history_keys
 
-        for history_key in history_keys:
+        if key_names is None:
+            key_names = history_keys
+        elif isinstance(key_names, str) and len(history_keys) == 1:
+            key_names = [key_names]
+        elif len(key_names) != len(history_keys):
+            raise ValueError("key_names must have the same length as history_keys.")
+
+        for key_name, history_key in zip(key_names, history_keys):
             out = [
                 self.get_history_data_at_condition(
                     quantity=history_key, condition=condition, value=value
                 )
             ]
-            self.results[history_key] = out
+            self.results[key_name] = out
 
     def get_profile_data_sequence(
         self,

@@ -24,6 +24,11 @@ class NumericalExperiment:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self.restore()
+
+    def restore(self) -> None:
+        """Restores the inlist and rn-file to their original state."""
+
         self.inlist.restore_inlist()
         self.rn.restore_rn()
 
@@ -73,7 +78,7 @@ class NumericalExperiment:
         logs_parent_dir: str = "LOGS",
         logs_style: str | list[str] | None = None,
         series_style: str | list[str] | None = None,
-        logs_kwargs: dict = {},
+        logs_kwargs: dict | None = None,
         **options
     ) -> None:
         """Runs the evolution of the model with logs_style = 2.
@@ -89,6 +94,9 @@ class NumericalExperiment:
         save_inlist : bool, optional
             If True, saves the inlist, by default False
         """
+        if logs_kwargs is None:
+            logs_kwargs = {}
+            
         logs_dir = Inlist.create_logs_path(logs_parent_dir = logs_parent_dir, logs_style = logs_style, series_style = series_style, **logs_kwargs)
         options["log_directory"] = logs_dir
 

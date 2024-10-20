@@ -67,24 +67,30 @@ def multiple_data_mask(keys: list[np.ndarray], mask_filters: list[Callable | Non
     return mask
 
 def sort_list_by_variable(input_list: list, variable: str | None) -> list:
+    """Sorts a list of strings by a variable in the string. If variable is None, returns the original list."""
+    
+    if variable is None:
+        return input_list
+    
     def extract_value(item):
         parts = item.split('_')
         try:
-            if variable is not None:
-                index = parts.index(variable)
-                value = parts[index + 1]
-            else:
-                # find the first numeric value in the string
+            if variable == "first":
                 for part in parts:
                     try:
                         value = float(part)
                         break
                     except ValueError:
                         pass
+
+            else:
+                index = parts.index(variable)
+                value = parts[index + 1]
         
             # Überprüfen, ob der Wert numerisch ist
             float_value = float(value)
             return float_value
+        
         except ValueError:
             raise ValueError(f"Der Wert der Variablen '{variable}' ist kein numerischer Wert.")
         except IndexError:

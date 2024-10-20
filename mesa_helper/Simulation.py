@@ -682,17 +682,17 @@ class Simulation:
         return interp1d(x_data, y_data, **kwargs)
 
     @lru_cache
-    def interpolate_history_data(self, x: str, y: str, **kwargs) -> interp1d:
+    def interpolate_history_data(self, x: str, y: str, filter_x: Callable | None = None, filter_y: Callable | None = None, **kwargs) -> interp1d:
         """Returns an interpolation function for the quantities (x,y).
 
         Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
         Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
         """
-
         x_data = self.history.data(x)
         y_data = self.history.data(y)
+        mask = multiple_data_mask([x_data, y_data], [filter_x, filter_y])
 
-        return interp1d(x_data, y_data, **kwargs)
+        return interp1d(x_data[mask], y_data[mask], **kwargs)
 
     def get_relative_difference(
         self,

@@ -227,8 +227,8 @@ class Simulation:
         history_keys: str | list[str],
         condition: str = "model_number",
         value: int | float = -1,
-        key_names: str | list[str] | None = None
-        ) -> None:
+        key_names: str | list[str] | None = None,
+    ) -> None:
         """Adds `history_keys` to `self.results`.
 
         Parameters
@@ -682,7 +682,14 @@ class Simulation:
         return interp1d(x_data, y_data, **kwargs)
 
     @lru_cache
-    def interpolate_history_data(self, x: str, y: str, filter_x: Callable | None = None, filter_y: Callable | None = None, **kwargs) -> interp1d:
+    def interpolate_history_data(
+        self,
+        x: str,
+        y: str,
+        filter_x: Callable | None = None,
+        filter_y: Callable | None = None,
+        **kwargs,
+    ) -> interp1d:
         """Returns an interpolation function for the quantities (x,y).
 
         Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
@@ -767,12 +774,32 @@ class Simulation:
     # ------------------------------ #
 
     def export_history_data(
-        self, columns: list[str], filename: str = "history.csv", **kwargs
+        self,
+        columns: list[str],
+        filename: str = "history.csv",
+        filters: Callable | list[Callable] | None = None,
+        **kwargs,
     ) -> None:
         """Exports the quantities in `columns` to a csv file."""
 
         # get the history data
         df = pd.DataFrame({column: self.history.data(column) for column in columns})
+
+        if filters is not None:
+            if type(filters) != list:
+                filters = [filters]
+
+            # check that len(filters) == len(columns)
+            if len(filters) != len(columns):
+                raise ValueError(
+                    "The number of filters must be the same as the number of columns."
+                )
+
+            mask = np.ones(len(df), dtype=bool)
+            for coulmn, filter in zip(columns, filters):
+                mask &= single_data_mask(df[coulmn], filter)
+            
+            df = df[mask]
 
         # add index = False to kwargs if not specified
         if kwargs.get("index") is None:
@@ -1046,24 +1073,28 @@ class Simulation:
         ax.set(xlabel=x, ylabel=y)
 
         return fig, ax
-    
-    def _composite_data(self, keys: str | list, function: Callable | None, filter: Callable | list[Callable] | None = None)->Tuple[np.ndarray, np.ndarray]:
-        
+
+    def _composite_data(
+        self,
+        keys: str | list,
+        function: Callable | None,
+        filter: Callable | list[Callable] | None = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+
         if isinstance(keys, str):
             values = self.history.data(keys)
             mask = single_data_mask(values, filter)
-        
+
         elif isinstance(keys, list):
             values = [self.history.data(key) for key in keys]
             mask = multiple_data_mask(values, filter)
-            
+
             if function is None:
                 raise ValueError("function must be specified if keys is a list.")
             else:
                 values = function(*values)
-        
+
         return values, mask
-        
 
     def history_composition_plot(
         self,
@@ -1109,24 +1140,43 @@ class Simulation:
         if set_label:
             kwargs["label"] = self.sim
 
-        print('history_composition_plot: get x data') if self.verbose else None
+        print("history_composition_plot: get x data") if self.verbose else None
         data_x, mask_x = self._composite_data(x, x_function, filter_x)
-        print(f'history_composition_plot: first five data_x entries: {data_x[:5]}') if self.verbose else None
-        print(f'history_composition_plot: first five mask_x entries: {mask_x[:5]}') if self.verbose else None
+        (
+            print(f"history_composition_plot: first five data_x entries: {data_x[:5]}")
+            if self.verbose
+            else None
+        )
+        (
+            print(f"history_composition_plot: first five mask_x entries: {mask_x[:5]}")
+            if self.verbose
+            else None
+        )
 
-        print('history_composition_plot: get y data') if self.verbose else None
+        print("history_composition_plot: get y data") if self.verbose else None
         data_y, mask_y = self._composite_data(y, y_function, filter_y)
-        print(f'history_composition_plot: first five data_y entries: {data_y[:5]}') if self.verbose else None
-        print(f'history_composition_plot: first five mask_y entries: {mask_y[:5]}') if self.verbose else None
+        (
+            print(f"history_composition_plot: first five data_y entries: {data_y[:5]}")
+            if self.verbose
+            else None
+        )
+        (
+            print(f"history_composition_plot: first five mask_y entries: {mask_y[:5]}")
+            if self.verbose
+            else None
+        )
 
-        
         mask = mask_x & mask_y
-        print(f'history_composition_plot: first five mask entries: {mask[:5]}') if self.verbose else None
+        (
+            print(f"history_composition_plot: first five mask entries: {mask[:5]}")
+            if self.verbose
+            else None
+        )
 
         ax.plot(data_x[mask], data_y[mask], **kwargs)
 
         return fig, ax
-    
+
     def history_ratio_plot(
         self,
         x: str,

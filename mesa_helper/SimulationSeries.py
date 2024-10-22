@@ -413,6 +413,7 @@ class SimulationSeries:
         self,
         columns: list[str],
         file_labeling: Callable[[str], str] | None = None,
+        filters: Callable | list[Callable] | None = None,
         **kwargs,
     ) -> None:
         """Exports the history quantities in `columns` to a csv file for every simulation in the SimulationSeries instance.
@@ -422,7 +423,7 @@ class SimulationSeries:
         columns : list[str]
             The columns to be exported.
         file_labeling : Callable[[str], str] | None, optional
-            A function that labels the file. The default is None. The input of the function is the simulation key.
+            A function that labels the output files. The input of the function is the simulation key. If none, writes the files into the current directory with `<simulation name>.csv`. The default is None.
         **kwargs : dict
             Keyword arguments for `pd.DataFrame.to_csv`.
         """
@@ -432,7 +433,7 @@ class SimulationSeries:
 
         for sim in self.simulations.values():
             filename = file_labeling(sim.sim) + ".csv"
-            sim.export_history_data(columns=columns, filename=filename, **kwargs)
+            sim.export_history_data(columns=columns, filename=filename, filters = filters, **kwargs)
 
     def export_profile_data(
         self,

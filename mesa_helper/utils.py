@@ -73,28 +73,21 @@ def sort_list_by_variable(input_list: list, variable: str | None) -> list:
         return input_list
     
     def extract_value(item):
-        parts = item.split('_')
-        try:
-            if variable == "first":
-                for part in parts:
-                    try:
-                        value = float(part)
-                        break
-                    except ValueError:
-                        pass
 
-            else:
-                index = parts.index(variable)
-                value = parts[index + 1]
-        
-            # Überprüfen, ob der Wert numerisch ist
+        # Check if the variable is in the item
+        if variable not in item:
+            raise ValueError(f"The variable '{variable}' was not found in '{item}'.")
+
+        # Extract the value of the variable
+        value = item.split(variable)[1].split('_')[1]
+
+        # Check if the value is a float
+        try:
             float_value = float(value)
-            return float_value
-        
         except ValueError:
-            raise ValueError(f"Der Wert der Variablen '{variable}' ist kein numerischer Wert.")
-        except IndexError:
-            raise ValueError(f"Die Variable '{variable}' wurde in '{item}' nicht gefunden.")
+            raise ValueError(f"The value of the variable '{variable}' is not a numerical value.")
+        
+        return float_value
     
     # Sortieren der Liste nach dem extrahierten Wert
     sorted_list = sorted(input_list, key=extract_value)

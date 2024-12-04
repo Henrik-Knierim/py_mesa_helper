@@ -1081,17 +1081,27 @@ class Simulation:
         filter: Callable | list[Callable] | None = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
 
+
         if isinstance(keys, str):
+
+            print("_composite_data: key is a string") if self.verbose else None
+
             values = self.history.data(keys)
             mask = single_data_mask(values, filter)
 
+            if function is not None:
+                values = function(values)
+
         elif isinstance(keys, list):
+            print("_composite_data: key is a list") if self.verbose else None
+
             values = [self.history.data(key) for key in keys]
             mask = multiple_data_mask(values, filter)
 
             if function is None:
                 raise ValueError("function must be specified if keys is a list.")
             else:
+                print(f"_composite_data: function is not None") if self.verbose else None
                 values = function(*values)
 
         return values, mask
@@ -1334,10 +1344,13 @@ class Simulation:
                 ]
 
             else:
+                # if model_numbers is None, then we plot all model numbers
                 # TODO: Add a method for profile_numbers
-                raise ValueError(
-                    "If x is 'star_age', then model_numbers must be specified."
-                )
+
+                model_numbers = self.log.model_numbers.tolist()
+                x_vals = self.profile_header_df[
+                        "star_age"
+                    ]
 
         elif x == "model_number":
             x_vals = model_numbers

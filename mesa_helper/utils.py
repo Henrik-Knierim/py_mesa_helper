@@ -1,6 +1,7 @@
 import os
 from typing import Any, Callable
 import numpy as np
+import inspect
 
 def validate_file(filename):
     """Check if a file exists and is valid."""
@@ -89,6 +90,49 @@ def sort_list_by_variable(input_list: list, variable: str | None) -> list:
         
         return float_value
     
-    # Sortieren der Liste nach dem extrahierten Wert
+    # sort the list based on the variable
     sorted_list = sorted(input_list, key=extract_value)
     return sorted_list
+
+# basic functions used to extract the return expression of a function
+# used to produce labels for composite plots
+# TODO: There is a bug where the function reads in more than it should.
+def extract_lambda_expression(lambda_func):
+    source = inspect.getsource(lambda_func).strip()
+    start = source.find(':') + 1
+    
+    # Take care of the fact that the source code might containt a comma or a hash
+    # a*(b+c), d
+    if ',' in source[start:]: 
+        end = source.find(',', start)
+
+        # there is a special case when the function is called such as 
+        # f(extract_lambda_expression(lamdba x1, x2: x1/x2), x1, x2)
+        # in this case, we need to check if the previous character is a closing parenthesis
+        # and if the number of opening and closing parenthesis is the same
+        if source[end-1] == ')' and source[start:end].count('(') != source[start:end].count(')'):
+            end -= 1
+
+    elif '#' in source[start:]:
+        end = source.find('#', start)
+    else:
+        end = len(source)
+
+    return source[start:end].strip()
+
+def extract_function_expression(func):
+    source = inspect.getsource(func).strip()
+    expression = source.split('return')
+    
+    # check if there is a hash at the end of the line
+    expression[1] = expression[1].split('#')[0] if '#' in expression[1] else expression[1]
+
+    return expression[1].strip()
+
+def extract_expression(func):
+    if func.__name__ == "<lambda>":
+        return extract_lambda_expression(func)
+    elif inspect.isfunction(func):
+        return extract_function_expression(func)
+    else:
+        raise ValueError("The input is not a function or a lambda function.")

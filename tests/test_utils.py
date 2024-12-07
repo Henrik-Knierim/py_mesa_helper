@@ -54,7 +54,33 @@ class TestUtils(unittest.TestCase):
         mask = utils.multiple_data_mask([x_1, x_2], [lambda x: x < 0.5, lambda x: x < -0.1])
         x_1_comparison = np.array([0.2, 0.3, 0.4])
         self.assertTrue(np.allclose(x_1[mask], x_1_comparison))
+    
+    def test_extract_function_definition(self):
+        """Tests whether the function definition extraction works."""
 
+        sol = 'x_1/x_2'
+
+        # case 1: lambda function predefined
+        f = lambda x_1, x_2: x_1/x_2
+        self.assertEqual(utils.extract_expression(f), sol)
+
+        # case 2: lambda function not predefined
+        self.assertEqual(utils.extract_expression(lambda x_1, x_2: x_1/x_2), sol)
+
+        # case 3: function predefined
+        def f(x_1, x_2):
+            return x_1/x_2
+        self.assertEqual(utils.extract_expression(f), sol)
+
+        # case 4: lambda function with comments
+        f = lambda x_1, x_2: x_1/x_2 # this is a comment
+        self.assertEqual(utils.extract_expression(f), sol)
+
+        # case 5: function with comments
+        def f(x_1, x_2):
+            return x_1/x_2 # this is a comment
+        self.assertEqual(utils.extract_expression(f), sol)
+        
 
 if __name__ == "__main__":
     unittest.main()

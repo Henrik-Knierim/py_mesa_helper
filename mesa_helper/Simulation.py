@@ -8,7 +8,7 @@ import mesa_reader as mr
 import pandas as pd
 from typing import Callable, Tuple
 from mesa_helper.astrophys import M_Jup_in_g, M_Sol_in_g, M_Earth_in_g
-from mesa_helper.utils import single_data_mask, multiple_data_mask
+from mesa_helper.utils import single_data_mask, multiple_data_mask, extract_expression
 from scipy.interpolate import interp1d
 from functools import lru_cache
 
@@ -888,6 +888,159 @@ class Simulation:
     # * ------------------------------ #
     # * -------- Plot Results -------- #
     # * ------------------------------ #
+    def _composite_data(
+        self,
+        keys: str | list,
+        function: Callable | None,
+        filter: Callable | list[Callable] | None = None,
+        kind: str = "history",
+        model_number: int = -1,
+        profile_number: int = -1,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        
+        if kind == "history":
+            mesa_data = self.history
+        elif kind == "profile":
+            mesa_data = self.log.profile_data(
+                model_number=model_number, profile_number=profile_number
+            )
+        else:
+            raise ValueError("kind must be either 'history' or 'profile'.")
+
+
+        if isinstance(keys, str):
+
+            print("_composite_data: key is a string") if self.verbose else None
+
+            values = mesa_data.data(keys)
+            mask = single_data_mask(values, filter)
+
+            if function is not None:
+                values = function(values)
+
+        elif isinstance(keys, list):
+            print("_composite_data: key is a list") if self.verbose else None
+
+            values = [mesa_data.data(key) for key in keys]
+            mask = multiple_data_mask(values, filter)
+
+            if function is None:
+                raise ValueError("function must be specified if keys is a list.")
+            else:
+                print(f"_composite_data: function is not None") if self.verbose else None
+                values = function(*values)
+
+        return values, mask
+    
+    def composition_plot(
+            self,
+            x: str | list,
+            y: str | list,
+            kind: str,
+            model_number: int = -1,
+            profile_number: int = -1,
+            function_x: Callable | None = None,
+            function_y: Callable | None = None,
+            fig: plt.Figure | None = None,
+            ax: Axes | None = None,
+            set_label: bool = False,
+            set_axis_labels: bool = False,
+            filter_x: Callable | list[Callable] | None = None,
+            filter_y: Callable | list[Callable] | None = None,
+            **kwargs
+    ) -> Tuple[plt.Figure, Axes]:
+        """Plots function_y(*y) as a function of function_x(*x) for the  MesaData object defined by `kind`.
+
+        Parameters
+        ----------
+        x : str | list
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `function_x`.
+        y : str | list
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `function_y`.
+        kind : str
+            The kind of data. Either 'history' or 'profile'.
+        model_number : int, optional
+            The model number if using `kind = 'profile'`. The default is -1.
+        profile_number : int, optional
+            The profile number if using `kind = 'profile'`. The default is -1.
+        function_x : Callable | None, optional
+            A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
+        function_y : Callable | None, optional
+            A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        set_axis_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
+        filter_x : Callable | list[Callable] | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            A function that filters the y-values. The default is None.
+        **kwargs : dict
+            Keyword arguments for `matplotlib.pyplot.plot`.
+
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        if set_label:
+            kwargs["label"] = self.sim
+
+        print("composition_plot: get x data") if self.verbose else None
+        data_x, mask_x = self._composite_data(x, function_x, filter_x, kind = kind, model_number=model_number, profile_number=profile_number)
+        (
+            print(f"composition_plot: first five data_x entries: {data_x[:5]}")
+            if self.verbose
+            else None
+        )
+        (
+            print(f"composition_plot: first five mask_x entries: {mask_x[:5]}")
+            if self.verbose
+            else None
+        )
+
+        print("composition_plot: get y data") if self.verbose else None
+        data_y, mask_y = self._composite_data(y, function_y, filter_y, kind = kind, model_number=model_number, profile_number=profile_number)
+        (
+            print(f"composition_plot: first five data_y entries: {data_y[:5]}")
+            if self.verbose
+            else None
+        )
+        (
+            print(f"composition_plot: first five mask_y entries: {mask_y[:5]}")
+            if self.verbose
+            else None
+        )
+
+        mask = mask_x & mask_y
+        (
+            print(f"composition_plot: first five mask entries: {mask[:5]}")
+            if self.verbose
+            else None
+        )
+
+        ax.plot(data_x[mask], data_y[mask], **kwargs)
+
+        if not set_axis_labels:
+            return fig, ax
+
+        if function_x is None:
+            x_label = x
+        else:
+            x_label = extract_expression(function_x)
+
+        if function_y is None:
+            y_label = y
+        else:
+            y_label = extract_expression(function_y)
+
+        ax.set(xlabel=x_label, ylabel=y_label)
+
+        return fig, ax
 
     def profile_plot(
         self,
@@ -897,7 +1050,10 @@ class Simulation:
         profile_number: int = -1,
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
+        filter_x: Callable | None = None,
+        filter_y: Callable | None = None,
         set_label: bool = False,
+        set_axis_labels: bool = False,
         **kwargs,
     ) -> Tuple[plt.Figure, Axes]:
         """Plots the profile data with (x, y) as the axes for a specified profile.
@@ -920,26 +1076,99 @@ class Simulation:
             The axes. The default is None. If None, a new figure is created.
         set_label : bool, optional
             If true, add label to plot, by default False
+        set_axis_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
+        filter_x : Callable | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y : Callable | None, optional
+            A function that filters the y-values. The default is None.
+        **kwargs : dict
+            Keyword arguments for `matplotlib.pyplot.plot`.
 
         Returns
         -------
         Tuple[plt.Figure, Axes]
             The figure and axes of the plot.
         """
-        if ax is None:
-            fig, ax = plt.subplots()
+        fig, ax = self.composition_plot(
+            x,
+            y,
+            kind = "profile",
+            model_number = model_number,
+            profile_number = profile_number,
+            fig = fig,
+            ax = ax,
+            set_label = set_label,
+            set_axis_labels=set_axis_labels,
+            filter_x = filter_x,
+            filter_y = filter_y,
+            **kwargs)
 
-        data = self.log.profile_data(
-            model_number=model_number, profile_number=profile_number
-        )
+        return fig, ax
+    
+    def profile_composition_plot(
+        self,
+        x: str | list,
+        y: str | list,
+        model_number: int = -1,
+        profile_number: int = -1,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        set_axis_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ):
+        """Plots function_y(*y) as a function of function_x(*x) for the profile data specified by the model number or profile number.
 
-        if set_label:
-            kwargs["label"] = self.sim
+        Parameters
+        ----------
+        x : str | list
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `function_x`.
+        y : str | list
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `function_y`.
+        model_number : int, optional
+            The model number of the profile. The default is -1.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        function_x : Callable | None, optional
+            A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
+        function_y : Callable | None, optional
+            A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        set_axis_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
+        filter_x : Callable | list[Callable] | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            A function that filters the y-values. The default is None.
 
-        ax.plot(data.data(x), data.data(y), **kwargs)
+        """
 
-        ax.set(xlabel=x, ylabel=y)
-
+        fig, ax = self.composition_plot(
+            x,
+            y,
+            kind = "profile",
+            model_number = model_number,
+            profile_number = profile_number,
+            function_x = function_x,
+            function_y = function_y,
+            fig = fig,
+            ax = ax,
+            set_label = set_label,
+            set_axis_labels = set_axis_labels,
+            filter_x = filter_x,
+            filter_y = filter_y,
+            **kwargs)
+        
         return fig, ax
 
     def profile_series_plot(
@@ -948,9 +1177,14 @@ class Simulation:
         y: str,
         model_numbers: list[int] | np.ndarray = [-1],
         profile_numbers: list[int] | np.ndarray = [-1],
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
         set_labels: bool = False,
+        set_axis_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
         **kwargs,
     ):
         """Plots the profile data with (x, y) as the axes at multiple profile numbers.
@@ -973,6 +1207,8 @@ class Simulation:
             The axes. The default is None. If None, a new figure is created.
         set_labels : bool, optional
             If true, add labels to the plot, by default False. The labels are the age of the star.
+        set_axis_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
 
         Returns
         -------
@@ -990,7 +1226,18 @@ class Simulation:
                     else None
                 )
                 label = f"{label:.2e}" if label is not None else None
-                self.profile_plot(x, y, model_number=i, ax=ax, label=label, **kwargs)
+                self.profile_composition_plot(
+                    x, 
+                    y,
+                    model_number=i,
+                    function_x=function_x,
+                    function_y=function_y,
+                    ax=ax,
+                    label=label,
+                    set_axis_labels=set_axis_labels,
+                    filter_x=filter_x,
+                    filter_y=filter_y,
+                    **kwargs)
 
         elif profile_numbers != [-1]:
             for i in profile_numbers:
@@ -1000,12 +1247,34 @@ class Simulation:
                     else None
                 )
                 label = f"{label:.2e}" if label is not None else None
-                self.profile_plot(x, y, profile_number=i, ax=ax, label=label, **kwargs)
+                self.profile_composition_plot(
+                    x,
+                    y,
+                    profile_number=i,
+                    function_x=function_x,
+                    function_y=function_y,
+                    ax=ax,
+                    label=label,
+                    set_axis_labels=set_axis_labels,
+                    filter_x=filter_x,
+                    filter_y=filter_y,
+                    **kwargs
+                    )
 
         else:
-            self.profile_plot(x, y, ax=ax, set_label=set_labels, **kwargs)
+            self.profile_composition_plot(
+                x,
+                y,
+                function_x=function_x,
+                function_y=function_y,
+                ax=ax,
+                set_label=set_labels,
+                set_axis_labels=set_axis_labels,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **kwargs
+                )
 
-        ax.set(xlabel=x, ylabel=y)
         return fig, ax
 
     def history_plot(
@@ -1015,6 +1284,7 @@ class Simulation:
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
         set_label: bool = False,
+        set_axis_labels: bool = False,
         filter_x: Callable | None = None,
         filter_y: Callable | None = None,
         **kwargs,
@@ -1037,6 +1307,9 @@ class Simulation:
 
         set_label : bool, optional
             If true, add label to plot, by default False
+        
+        set_axis_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
 
         filter_x : Callable | None, optional
             A function that filters the x-values. The default is None.
@@ -1058,78 +1331,45 @@ class Simulation:
 
         """
 
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        if set_label:
-            kwargs["label"] = self.sim
-
-        x_values = self.history.data(x)
-        y_values = self.history.data(y)
-        mask = multiple_data_mask([x_values, y_values], [filter_x, filter_y])
-
-        ax.plot(x_values[mask], y_values[mask], **kwargs)
-
-        ax.set(xlabel=x, ylabel=y)
+        fig, ax = self.composition_plot(
+            x,
+            y,
+            kind = "history",
+            fig = fig,
+            ax = ax,
+            set_label = set_label,
+            set_axis_labels = set_axis_labels,
+            filter_x = filter_x,
+            filter_y = filter_y,
+            **kwargs)
 
         return fig, ax
-
-    def _composite_data(
-        self,
-        keys: str | list,
-        function: Callable | None,
-        filter: Callable | list[Callable] | None = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-
-
-        if isinstance(keys, str):
-
-            print("_composite_data: key is a string") if self.verbose else None
-
-            values = self.history.data(keys)
-            mask = single_data_mask(values, filter)
-
-            if function is not None:
-                values = function(values)
-
-        elif isinstance(keys, list):
-            print("_composite_data: key is a list") if self.verbose else None
-
-            values = [self.history.data(key) for key in keys]
-            mask = multiple_data_mask(values, filter)
-
-            if function is None:
-                raise ValueError("function must be specified if keys is a list.")
-            else:
-                print(f"_composite_data: function is not None") if self.verbose else None
-                values = function(*values)
-
-        return values, mask
 
     def history_composition_plot(
         self,
         x: str | list,
         y: str | list,
-        x_function: Callable | None = None,
-        y_function: Callable | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
         set_label: bool = False,
+        set_axis_labels: bool = False,
         filter_x: Callable | list[Callable] | None = None,
         filter_y: Callable | list[Callable] | None = None,
         **kwargs,
     ):
-        """Plots y_numerator / y_denominator as a function of x for the history data.
+        """Plots function_y(*y) as a function of function_x(*x) for the history data.
 
         Parameters
         ----------
         x : str | list
-            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `x_function`.
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `function_x`.
         y : str | list
-            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `y_function`.
-        x_function : Callable | None, optional
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `function_y`.
+        function_x : Callable | None, optional
             A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
-        y_function : Callable | None, optional
+        function_y : Callable | None, optional
             A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
         fig : plt.Figure | None, optional
             The figure. The default is None.
@@ -1137,6 +1377,8 @@ class Simulation:
             The axes. The default is None. If None, a new figure is created.
         set_label : bool, optional
             If true, add label to plot, by default False
+        set_axis_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
         filter_x : Callable | list[Callable] | None, optional
             A function that filters the x-values. The default is None.
         filter_y : Callable | list[Callable] | None, optional
@@ -1144,49 +1386,22 @@ class Simulation:
 
         """
 
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        if set_label:
-            kwargs["label"] = self.sim
-
-        print("history_composition_plot: get x data") if self.verbose else None
-        data_x, mask_x = self._composite_data(x, x_function, filter_x)
-        (
-            print(f"history_composition_plot: first five data_x entries: {data_x[:5]}")
-            if self.verbose
-            else None
-        )
-        (
-            print(f"history_composition_plot: first five mask_x entries: {mask_x[:5]}")
-            if self.verbose
-            else None
-        )
-
-        print("history_composition_plot: get y data") if self.verbose else None
-        data_y, mask_y = self._composite_data(y, y_function, filter_y)
-        (
-            print(f"history_composition_plot: first five data_y entries: {data_y[:5]}")
-            if self.verbose
-            else None
-        )
-        (
-            print(f"history_composition_plot: first five mask_y entries: {mask_y[:5]}")
-            if self.verbose
-            else None
-        )
-
-        mask = mask_x & mask_y
-        (
-            print(f"history_composition_plot: first five mask entries: {mask[:5]}")
-            if self.verbose
-            else None
-        )
-
-        ax.plot(data_x[mask], data_y[mask], **kwargs)
-
+        fig, ax = self.composition_plot(
+            x,
+            y,
+            kind = "history",
+            function_x = function_x,
+            function_y = function_y,
+            fig = fig,
+            ax = ax,
+            set_label = set_label,
+            set_axis_labels = set_axis_labels,
+            filter_x = filter_x,
+            filter_y = filter_y,
+            **kwargs)
+        
         return fig, ax
-
+        
     def history_ratio_plot(
         self,
         x: str,
@@ -1195,6 +1410,7 @@ class Simulation:
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
         set_label: bool = False,
+        set_axis_labels: bool = False,
         filter_x: Callable | None = None,
         filter_y_numerator: Callable | None = None,
         filter_y_denominator: Callable | None = None,
@@ -1216,6 +1432,8 @@ class Simulation:
             The axes. The default is None. If None, a new figure is created.
         set_label : bool, optional
             If true, add label to plot, by default False
+        set_axis_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
         filter_x : Callable | None, optional
             A function that filters the x-values. The default is None.
         filter_y_numerator : Callable | None, optional
@@ -1230,16 +1448,17 @@ class Simulation:
         fig, ax = self.history_composition_plot(
             x,
             [y_numerator, y_denominator],
-            y_function=lambda y_numerator, y_denominator: y_numerator / y_denominator,
+            function_y=lambda y_numerator, y_denominator: y_numerator / y_denominator,
             fig=fig,
             ax=ax,
             set_label=set_label,
+            set_axis_labels=set_axis_labels,
             filter_x=filter_x,
             filter_y=[filter_y_numerator, filter_y_denominator],
             **kwargs,
         )
 
-        ax.set(xlabel=x, ylabel=f"{y_numerator} / {y_denominator}")
+        # ax.set(xlabel=x, ylabel=f"{y_numerator} / {y_denominator}")
 
         return fig, ax
 

@@ -584,8 +584,8 @@ class SimulationSeries:
         self,
         x: str | list,
         y: str | list,
-        x_function: Callable | None = None,
-        y_function: Callable | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
         set_label: bool = False,
@@ -598,12 +598,12 @@ class SimulationSeries:
         Parameters
         ----------
         x : str | list
-            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `x_function`.
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `function_x`.
         y : str | list
-            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `y_function`.
-        x_function : Callable | None, optional
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `function_y`.
+        function_x : Callable | None, optional
             A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
-        y_function : Callable | None, optional
+        function_y : Callable | None, optional
             A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
         fig : plt.Figure | None, optional
             The figure. The default is None.
@@ -625,8 +625,8 @@ class SimulationSeries:
             sim.history_composition_plot(
                 x,
                 y,
-                x_function=x_function,
-                y_function=y_function,
+                function_x=function_x,
+                function_y=function_y,
                 fig=fig,
                 ax=ax,
                 set_label=set_label,
@@ -736,6 +736,7 @@ class SimulationSeries:
         return fig, ax
 
 
+    # Todo: update to new method in Simulation
     def mean_profile_sequence_plot(
         self,
         x: str,

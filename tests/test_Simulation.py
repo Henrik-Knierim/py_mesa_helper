@@ -71,7 +71,7 @@ class TestSimulation(unittest.TestCase):
         # the planet's mass is 1 M_Jup, so the integrated mass should be 0.5 M_Jup
         m_int_comparison: float = 0.5
 
-        m_int: np.float_ = self.sim.integrate("mass_Jup", mass_unit="M_Jup")
+        m_int: np.float_ = self.sim.integrate("mass_Jup", unit="M_Jup")
         m_mean = self.sim.mean("mass_Jup")
 
         if self.verbose:

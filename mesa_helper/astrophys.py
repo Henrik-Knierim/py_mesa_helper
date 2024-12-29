@@ -98,3 +98,35 @@ def kappa_v_Guillot_2010(T_eq: float | np.ndarray) -> float | np.ndarray:
     T_0: float = 2000.0
     T_irr: float = np.sqrt(2) * T_eq
     return kappa_0 * np.sqrt(T_irr / T_0)
+
+
+def _compute_mean(f: np.ndarray, dx: np.ndarray) -> np.float_:
+    """Computes the mean of f(x) for a given dx."""
+    return np.dot(dx, f) / np.sum(dx)
+
+
+def _integrate(f: np.ndarray, dx: np.ndarray, unit: str | float | None = None) -> np.float_:
+    """Integrates f(x) for a given dx. The unit can be specified to normalize the result. 
+    
+    If unit is None, the result is in the same unit as f(x).
+    If unit is a float, the result is divided by this float.
+    If unit is a string, the result is divided by the corresponding normalization.
+    """
+
+    if unit is None:
+        return np.dot(f, dx)
+
+    normalizations = {
+        "M_Jup": M_Jup_in_g,
+        "M_Sol": M_Sol_in_g,
+        "M_Earth": M_Earth_in_g,
+        "g": 1.0,
+    }
+
+    if isinstance(unit, float):
+        normalization: float = unit
+    else:
+        normalization: float = normalizations[unit]
+
+    
+    return np.dot(f, dx) / normalization

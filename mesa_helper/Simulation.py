@@ -198,9 +198,18 @@ class Simulation:
         """
 
         if condition == "model_number":
+            # if we use the pythonic way of counting model numbers from the end
+            # then we need to convert the negative value to a positive one
             if value < 0:
                 value = self.history.model_number[value]
             return self.history.data_at_model_number(quantity, value)
+
+        if condition == 'profile_number':
+            # see model_number
+            if value < 0:
+                value = self.log.profile_numbers[value]
+            i_m = self.log.model_with_profile_number(value)
+            return self.history.data_at_model_number(quantity, i_m)
 
         # find the index of the closest value to the age
         quantities = self.history.data(condition)
@@ -1775,3 +1784,5 @@ class Simulation:
         ax.set(xlabel=x, ylabel=f"Mean {y}")
 
         return fig, ax
+    
+    # TODO: Add a profile sequence plot for different header conditions

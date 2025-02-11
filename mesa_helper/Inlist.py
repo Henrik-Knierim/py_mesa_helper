@@ -795,7 +795,7 @@ class Inlist:
 
     @staticmethod
     def create_relax_entropy_file(
-        s_of_m_kerg: Callable,
+        s_of_m_kerg: Callable | float,
         relax_entropy_filename: str = "relax_entropy_file.dat",
         n_points: int = 1000,
     ) -> None:
@@ -805,12 +805,18 @@ class Inlist:
         ----------
         s_of_m_kerg : Callable
             A function that returns the entropy as a function of mass in kergs. The function is expected take m/M_p as an argument, i.e., relative in mass.
+            You can also provide a float, in which case the function will be s(m) = s_of_m_kerg.
         relax_entropy_filename : str, optional
             The name of the relax entropy file. The default is 'relax_entropy_file.dat'.
         n_points : int, optional
             The number of points to use in the entropy profile. The default is 1000.
         """
 
+        # if s_of_m_kerg is a float, create a homogeneous entropy profile
+        if isinstance(s_of_m_kerg, float):
+            Inlist.create_relax_entropy_file_homogeneous(s_of_m_kerg, relax_entropy_filename)
+            return
+        
         # tests
         if not callable(s_of_m_kerg):
             raise TypeError("s_of_m_kerg must be a function.")

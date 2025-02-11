@@ -30,6 +30,7 @@ class CompositionGradient:
             gradient type. Default is 'Z'. Options are:
             - 'Y' : gradient in Helium mass fraction (assumes pure H-He)
             - 'Z' : gradient in metal mass fraction (assumes metal abundances from Lodders+2020)
+            - 'XZ' : gradient in metal mass fraction (assuming only H and Z)
         M_p : float
             planet mass in Jupiter masses. Default is 1; if your profile is given in relative mass fraction, you can leave this as 1.
         iso_net : str
@@ -51,7 +52,7 @@ class CompositionGradient:
 
         self.iso_net = iso_net
 
-        if gradient in ["Y", "Z"]:
+        if gradient in ['Y', 'Z', 'XZ']:
             self.gradient = gradient
         else:
             raise Exception(f"gradient={gradient} not supported.")
@@ -72,6 +73,8 @@ class CompositionGradient:
             self.scaled_abundances = self._scaled_abundances_Z
         elif self.gradient == "Y":
             self.scaled_abundances = self._scaled_abundances_H_He
+        elif self.gradient == 'XZ':
+            self.scaled_abundances = self._scaled_abundances_XZ
         else:
             raise Exception(f"gradient={self.gradient} not supported.")
 
@@ -94,12 +97,10 @@ class CompositionGradient:
         return abu
 
     # scaled abundances for pure H-He
-    def _scaled_abundances_H_He(self, Y: float) -> dict:
-        X = 1 - Y
-        if self.iso_net == "basic":
-            f = lambda el: (
-                X / X_Sol if el == "H" else (Y / Y_Sol if el in ["He3", "He4"] else 0.0)
-            )
+    def _scaled_abundances_H_He(self, Y:float):
+        X = 1.0-Y
+        if self.iso_net == 'basic':
+            f = lambda el: X/X_Sol if el=="H" else (Y/Y_Sol if el in ["He3","He4"] else 0.) 
             abu = {}
             abu.update((el, X_el * f(el)) for el, X_el in X_el_basic.items())
         elif self.iso_net == "planets":
@@ -108,6 +109,20 @@ class CompositionGradient:
             raise Exception(f"iso_net={self.iso_net} not supported.")
         return abu
 
+    # scaled abundances for H-Z
+    def _scaled_abundances_XZ(self, Z:float):
+        X = 1.0-Z
+        if self.iso_net == 'basic':
+            f = lambda el: X/X_Sol if el=="H" else (0. if el in ["He3","He4"] else Z/Z_Sol) 
+            abu = {}
+            abu.update((el,X_el*f(el)) for el, X_el in X_el_basic.items())
+        elif self.iso_net == 'planets':
+            abu = {"H":X, "He4":0., "O16":Z}
+        else:
+            raise Exception(f"iso_net={self.iso_net} not supported.")
+        return abu
+
+    
     # create file for relax_initial_composition
 
     def _mass_points(

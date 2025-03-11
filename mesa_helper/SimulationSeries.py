@@ -669,6 +669,75 @@ class SimulationSeries:
             sim.history_ratio_plot(x, y_numerator, y_denominator, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y_numerator=filter_y_numerator, filter_y_denominator=filter_y_denominator, **kwargs)
 
         return fig, ax
+    
+    def profile_composition_plot(
+        self,
+        x: str | list,
+        y: str | list,
+        model_number: int = -1,
+        profile_number: int = -1,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        set_axes_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ):
+        """Plots function_y(*y) as a function of function_x(*x) for the profile data specified by the model number or profile number.
+
+        Parameters
+        ----------
+        x : str | list
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `function_x`.
+        y : str | list
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `function_y`.
+        model_number : int, optional
+            The model number of the profile. The default is -1.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        function_x : Callable | None, optional
+            A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
+        function_y : Callable | None, optional
+            A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        set_axes_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
+        filter_x : Callable | list[Callable] | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            A function that filters the y-values. The default is None.
+
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for sim in self.simulations.values():
+            sim.profile_composition_plot(
+                x = x,
+                y = y,
+                model_number = model_number,
+                profile_number = profile_number,
+                function_x = function_x,
+                function_y = function_y,
+                fig = fig,
+                ax = ax,
+                set_label = set_label,
+                set_axes_labels = set_axes_labels,
+                filter_x = filter_x,
+                filter_y = filter_y,
+                **kwargs,
+            )
+
+        return fig, ax
 
     def relative_difference_of_two_simulations_plot(
         self,

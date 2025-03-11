@@ -812,8 +812,8 @@ class Inlist:
             The number of points to use in the entropy profile. The default is 1000.
         """
 
-        # if s_of_m_kerg is a float, create a homogeneous entropy profile
-        if isinstance(s_of_m_kerg, float):
+        # if s_of_m_kerg is a number, create a homogeneous entropy profile
+        if isinstance(s_of_m_kerg, (float, int, np.floating, np.integer)):
             Inlist.create_relax_entropy_file_homogeneous(s_of_m_kerg, relax_entropy_filename)
             return
         

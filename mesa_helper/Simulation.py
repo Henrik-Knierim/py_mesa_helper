@@ -180,7 +180,7 @@ class Simulation:
         value: int | float,
         check_tolerance: bool = False,
         relative_tolerance: float = 1e-3,
-    ) -> np.float_ | int:
+    ) -> np.float64 | int:
         """Returns the history data for `quantity` where the quantity is closest to `value`.
 
         Parameters
@@ -308,7 +308,7 @@ class Simulation:
         filter_y: Callable | list[Callable] | None = None,
         kind: str = "profile",
         **kwargs,
-    ) -> np.float_:
+    ) -> np.float64:
         """Returns the integral of `keys` or a function thereof.
 
         Parameters
@@ -334,7 +334,7 @@ class Simulation:
 
         Returns
         -------
-        np.float_
+        np.float64
             The integral of the quantity.
 
         Raises
@@ -383,7 +383,7 @@ class Simulation:
         filter_y: Callable | list[Callable] | None = None,
         kind: str = "profile",
         **kwargs,
-    ) -> np.float_:
+    ) -> np.float64:
         """Returns the mean of `keys` or a function thereof.
 
         Parameters
@@ -407,7 +407,7 @@ class Simulation:
 
         Returns
         -------
-        np.float_
+        np.float64
             The mean of the quantity.
 
         Raises
@@ -574,7 +574,7 @@ class Simulation:
         value: float | int,
         profile_number: int = -1,
         **kwargs,
-    ) -> np.float_ | int:
+    ) -> np.float64 | int:
         """Returns the profile data for `quantity` where `condition` is `value`.
 
         Description
@@ -659,7 +659,7 @@ class Simulation:
     @staticmethod
     def _clostest_quantity(
         df: pd.DataFrame, quantity: str, condition: str, value: int | float
-    ) -> np.float_ | int:
+    ) -> np.float64 | int:
         """Returns the quantity in a DataFrame where condition is closest to value."""
         return df.iloc[(df[condition] - value).abs().argsort()[:1]][quantity].values[0]
 

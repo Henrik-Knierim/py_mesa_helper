@@ -247,6 +247,9 @@ class CompositionGradient:
             raise Exception("m_1 needs to be >= 0")
         elif any(n < 0 for n in m):
             raise Exception("m should contain positive numbers only")
+        
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         # linear function f = a m + b
         a = -(f_2 - f_1) / (m_1 - m_2)
@@ -291,6 +294,9 @@ class CompositionGradient:
             raise Exception("Z_atm needs to be between 0 and 1")
         elif not 0 <= Z_0 <= 1:
             raise Exception("Z_atm needs to be between 0 and 1")
+        
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         return np.piecewise(
             m,
@@ -316,6 +322,9 @@ class CompositionGradient:
             raise Exception("M_z needs to be >= 0")
         elif not 0 <= Z_atm <= 1:
             raise Exception("Z_atm needs to be between 0 and 1")
+        
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         # for some reason, I need to pass the lambda functions directly without predefining them ...
         return np.piecewise(
@@ -333,6 +342,9 @@ class CompositionGradient:
 
     @staticmethod
     def stepwise(m, m_transition, f_1, f_2, **kwargs) -> np.ndarray:
+
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         # tests
         if any(n < 0 for n in m):
@@ -372,6 +384,9 @@ class CompositionGradient:
             array of mass fractions
 
         """
+
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         # tests
         if m_end < m_start:
@@ -425,6 +440,9 @@ class CompositionGradient:
             array of mass fractions
         """
 
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
+
         # tests
         if any(n < 0 for n in m):
             raise Exception("m should contain positive numbers only")
@@ -474,6 +492,9 @@ class CompositionGradient:
         Z_env : float
             metallicity of the envelope. Default is solar metallicity.
         """
+
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         # tests
         if any(n < 0 for n in m):
@@ -526,6 +547,9 @@ class CompositionGradient:
         alpha : float
             exponential decay constant
         """
+
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         # tests
         if any(n < 0 for n in m):
@@ -605,6 +629,9 @@ class CompositionGradient:
             raise Exception("dm_cores should contain exactly three values")
         elif len(Z_values) != 3:
             raise Exception("Z_values should contain exactly three values")
+        
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
 
         # profile functions
         f_core = lambda m: np.full_like(m, Z_values[0])
@@ -674,6 +701,9 @@ class CompositionGradient:
         """
         verbose = False
 
+        # Convert m to a float array to ensure compatibility with np.piecewise
+        m = np.asarray(m, dtype=float)
+
         # tests
         if m_2 < m_1:
             raise Exception("m_2 must be larger than m_1")
@@ -712,6 +742,7 @@ class CompositionGradient:
         m_2 : float
             mass at which the transition ends
         """
+
         f_transition = lambda m: f_1(m) * (1 - (m - m_1) / (m_2 - m_1)) + f_2(m) * (
             m - m_1
         ) / (m_2 - m_1)

@@ -7,7 +7,13 @@ import numpy as np
 import mesa_reader as mr
 import pandas as pd
 from typing import Callable, Tuple
-from mesa_helper.astrophys import M_Jup_in_g, M_Sol_in_g, M_Earth_in_g, _compute_mean, _integrate
+from mesa_helper.astrophys import (
+    M_Jup_in_g,
+    M_Sol_in_g,
+    M_Earth_in_g,
+    _compute_mean,
+    _integrate,
+)
 from mesa_helper.utils import single_data_mask, multiple_data_mask, extract_expression
 from scipy.interpolate import interp1d
 from functools import lru_cache
@@ -204,7 +210,7 @@ class Simulation:
                 value = self.history.model_number[value]
             return self.history.data_at_model_number(quantity, value)
 
-        if condition == 'profile_number':
+        if condition == "profile_number":
             # see model_number
             if value < 0:
                 value = self.log.profile_numbers[value]
@@ -295,7 +301,7 @@ class Simulation:
             )
 
         return [f(i) for i in indices]
-    
+
     def integrate(
         self,
         keys: str | list,
@@ -343,34 +349,33 @@ class Simulation:
             If `kind` is not 'profile' or 'history'.
         """
 
-        dx_dict = {'profile' : 'dm', 'history' : 'star_age'}
+        dx_dict = {"profile": "dm", "history": "star_age"}
 
         # raise an error if kind is not 'profile' or 'history'
         if kind not in dx_dict.keys():
             raise ValueError("kind must be either 'profile' or 'history'.")
-        
-    
+
         dx, mask_dx = self._composite_data(
-            keys = dx_dict[kind],
-            function = function_x,
-            filter = filter_x,
-            kind = kind,
-            model_number = model_number,
-            profile_number = profile_number,
+            keys=dx_dict[kind],
+            function=function_x,
+            filter=filter_x,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
         )
 
         f, mask_f = self._composite_data(
-            keys = keys,
-            function = function_y,
-            filter = filter_y,
-            kind = kind,
-            model_number = model_number,
-            profile_number = profile_number,
+            keys=keys,
+            function=function_y,
+            filter=filter_y,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
         )
 
         mask = mask_f & mask_dx
 
-        return _integrate(f[mask], dx[mask], unit = unit)
+        return _integrate(f[mask], dx[mask], unit=unit)
 
     def mean(
         self,
@@ -423,33 +428,32 @@ class Simulation:
         # returns the mean of Z = 1-X-Y for the first  profile
         """
 
-        dx_dict = {'profile' : 'dm', 'history' : 'star_age'}
+        dx_dict = {"profile": "dm", "history": "star_age"}
 
         # raise an error if kind is not 'profile' or 'history'
         if kind not in dx_dict.keys():
             raise ValueError("kind must be either 'profile' or 'history'.")
-        
-    
+
         dx, mask_dx = self._composite_data(
-            keys = dx_dict[kind],
-            function = function_x,
-            filter = filter_x,
-            kind = kind,
-            model_number = model_number,
-            profile_number = profile_number,
+            keys=dx_dict[kind],
+            function=function_x,
+            filter=filter_x,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
         )
-        print(f'mean: dx: {dx[mask_dx]}') if self.verbose else None
+        print(f"mean: dx: {dx[mask_dx]}") if self.verbose else None
 
         f, mask_f = self._composite_data(
-            keys = keys,
-            function = function_y,
-            filter = filter_y,
-            kind = kind,
-            model_number = model_number,
-            profile_number = profile_number,
+            keys=keys,
+            function=function_y,
+            filter=filter_y,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
         )
 
-        print(f'mean: f: {f[mask_f]}') if self.verbose else None
+        print(f"mean: f: {f[mask_f]}") if self.verbose else None
 
         mask = mask_f & mask_dx
 
@@ -462,7 +466,7 @@ class Simulation:
         profile_number: int = -1,
         kind: str | None = "integrate",
         function_x: Callable | None = None,
-        function_y: Callable | None  = None,
+        function_y: Callable | None = None,
         filter_x: Callable | list[Callable] | None = None,
         filter_y: Callable | list[Callable] | None = None,
         name: str | None = None,
@@ -497,17 +501,17 @@ class Simulation:
             Keyword arguments for the function.
         """
 
-        #* tests
-        
+        # * tests
+
         # kind must be either 'integrate', 'mean', or None
-        if kind not in ['integrate', 'mean', None]:
+        if kind not in ["integrate", "mean", None]:
             raise ValueError("kind must be either 'integrate', 'mean', or None.")
 
         # if kind is not callable, then keys must be a string
         if isinstance(kind, str) and not isinstance(keys, str):
             raise ValueError("If kind is not a function, then keys must be a string.")
-        
-        #* name of the results column
+
+        # * name of the results column
         if name is None and isinstance(kind, str):
             result_key = kind + "_" + keys
 
@@ -519,53 +523,52 @@ class Simulation:
             result_key = name
 
         if kind == "integrate":
-            print(f'add_profile_data: integrate {keys}') if self.verbose else None
+            print(f"add_profile_data: integrate {keys}") if self.verbose else None
             value = self.integrate(
-                        keys = keys,
-                        model_number = model_number,
-                        profile_number = profile_number,
-                        unit = unit,
-                        function_x = function_x,
-                        function_y = function_y,
-                        filter_x = filter_x,
-                        filter_y = filter_y,
-                        kind = "profile",
-                        **kwargs
-                    )
-        elif kind == "mean":
-            print(f'add_profile_data: mean {keys}') if self.verbose else None
-            value = self.mean(
-                        keys = keys,
-                        model_number = model_number,
-                        profile_number = profile_number,
-                        function_x = function_x,
-                        function_y = function_y,
-                        filter_x = filter_x,
-                        filter_y = filter_y,
-                        kind = "profile",
-                        **kwargs
-                    )
-            
-        elif isinstance(kind, Callable):
-            print(f'add_profile_data: function {keys}') if self.verbose else None
-            value = self._composite_data(
-                keys = keys,
-                function = function_y,
-                filter = filter_y,
-                kind = "profile",
-                model_number = model_number,
-                profile_number = profile_number,
+                keys=keys,
+                model_number=model_number,
+                profile_number=profile_number,
+                unit=unit,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                kind="profile",
+                **kwargs,
             )
-            
+        elif kind == "mean":
+            print(f"add_profile_data: mean {keys}") if self.verbose else None
+            value = self.mean(
+                keys=keys,
+                model_number=model_number,
+                profile_number=profile_number,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                kind="profile",
+                **kwargs,
+            )
+
+        elif isinstance(kind, Callable):
+            print(f"add_profile_data: function {keys}") if self.verbose else None
+            value = self._composite_data(
+                keys=keys,
+                function=function_y,
+                filter=filter_y,
+                kind="profile",
+                model_number=model_number,
+                profile_number=profile_number,
+            )
+
         else:
             raise ValueError("kind must 'integrated', 'mean', or a function.")
-        
+
         out = [value]
 
-        print(f'add_profile_data: {result_key} = {out}') if self.verbose else None
+        print(f"add_profile_data: {result_key} = {out}") if self.verbose else None
         self.results[result_key] = out
-        print('add_profile_data finished') if self.verbose else None
-
+        print("add_profile_data finished") if self.verbose else None
 
     def get_profile_data_at_condition(
         self,
@@ -749,16 +752,16 @@ class Simulation:
                 **kwargs,
             )
 
-
         if profile_numbers == None and model_numbers == None:
-            return [local_integrate(profile_number=i_p)for i_p in self.log.profile_numbers]
-        
+            return [
+                local_integrate(profile_number=i_p) for i_p in self.log.profile_numbers
+            ]
+
         elif model_numbers != None:
             return [local_integrate(model_number=i_m) for i_m in model_numbers]
-        
+
         elif profile_numbers != None:
             return [local_integrate(profile_number=i_p) for i_p in profile_numbers]
-
 
     def get_mean_profile_data_sequence(
         self,
@@ -803,40 +806,24 @@ class Simulation:
                 **kwargs,
             )
 
-
         if profile_numbers == None and model_numbers == None:
-            return [local_mean(profile_number=i_p)for i_p in self.log.profile_numbers]
-        
+            return [local_mean(profile_number=i_p) for i_p in self.log.profile_numbers]
+
         elif model_numbers != None:
             return [local_mean(model_number=i_m) for i_m in model_numbers]
-        
+
         elif profile_numbers != None:
             return [local_mean(profile_number=i_p) for i_p in profile_numbers]
 
-    @lru_cache
-    def interpolate_profile_data(
-        self, x: str, y: str, model_number: int = -1, profile_number: int = -1, **kwargs
-    ) -> interp1d:
-        """Returns a interpolation function for the quantities (x,y).
-
-        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
-        Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
-        """
-
-        x_data = self.log.profile_data(
-            model_number=model_number, profile_number=profile_number
-        ).data(x)
-        y_data = self.log.profile_data(
-            model_number=model_number, profile_number=profile_number
-        ).data(y)
-
-        return interp1d(x_data, y_data, **kwargs)
-
-    @lru_cache
-    def interpolate_history_data(
+    def _interpolate_mesa_data(
         self,
         x: str,
         y: str,
+        kind: str,
+        model_number: list[int] | np.ndarray | None = None,
+        profile_number: list[int] | np.ndarray | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
         filter_x: Callable | None = None,
         filter_y: Callable | None = None,
         **kwargs,
@@ -845,12 +832,156 @@ class Simulation:
 
         Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
         Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
-        """
-        x_data = self.history.data(x)
-        y_data = self.history.data(y)
-        mask = multiple_data_mask([x_data, y_data], [filter_x, filter_y])
 
-        return interp1d(x_data[mask], y_data[mask], **kwargs)
+        Parameters
+        ----------
+        x : str
+            The x-axis of the data.
+        y : str
+            The y-axis of the data.
+        kind : str
+            The kind of data to use. Either 'profile' or 'history'.
+        model_number : list[int] | np.ndarray | None, optional
+            The model numbers. The default is None.
+        profile_number : list[int] | np.ndarray | None, optional
+            The profile numbers. The default is None.
+        function_x : Callable | None, optional
+            The function to apply to the x-axis data. The default is None.
+        function_y : Callable | None, optional
+            The function to apply to the y-axis data. The default is None.
+        filter_x : Callable | None, optional
+            The filter for the x-axis data. The default is None.
+        filter_y : Callable | None, optional
+            The filter for the y-axis data. The default is None.
+        **kwargs : dict
+            Keyword arguments for `scipy.interpolate.interp1d`.
+
+        """
+
+        data_x, mask_x = self._composite_data(
+            x,
+            function_x,
+            filter_x,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
+        )
+        data_y, mask_y = self._composite_data(
+            y,
+            function_y,
+            filter_y,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
+        )
+
+        mask = mask_x & mask_y
+
+        return interp1d(data_x[mask], data_y[mask], **kwargs)
+
+    @lru_cache
+    def interpolate_profile_data(
+        self,
+        x: str,
+        y: str,
+        model_number: list[int] | np.ndarray | None = None,
+        profile_number: list[int] | np.ndarray | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | None = None,
+        filter_y: Callable | None = None,
+        **kwargs,
+    ) -> interp1d:
+        """Returns an interpolation function for the quantities (x,y).
+
+        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
+        Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
+
+        Parameters
+        ----------
+        x : str
+            The x-axis of the data.
+        y : str
+            The y-axis of the data.
+        model_number : list[int] | np.ndarray | None, optional
+            The model numbers. The default is None.
+        profile_number : list[int] | np.ndarray | None, optional
+            The profile numbers. The default is None.
+        function_x : Callable | None, optional
+            The function to apply to the x-axis data. The default is None.
+        function_y : Callable | None, optional
+            The function to apply to the y-axis data. The default is None.
+        filter_x : Callable | None, optional
+            The filter for the x-axis data. The default is None.
+        filter_y : Callable | None, optional
+            The filter for the y-axis data. The default is None.
+        **kwargs : dict
+            Keyword arguments for `scipy.interpolate.interp1d`.
+
+        """
+
+        f = self._interpolate_mesa_data(
+            x=x,
+            y=y,
+            kind="profile",
+            model_number=model_number,
+            profile_number=profile_number,
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
+        return f
+
+    @lru_cache
+    def interpolate_history_data(
+        self,
+        x: str,
+        y: str,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | None = None,
+        filter_y: Callable | None = None,
+        **kwargs,
+    ) -> interp1d:
+        """Returns an interpolation function for the quantities (x,y).
+
+        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
+        Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
+
+        Parameters
+        ----------
+        x : str
+            The x-axis of the data.
+        y : str
+            The y-axis of the data.
+        function_x : Callable | None, optional
+            The function to apply to the x-axis data. The default is None.
+        function_y : Callable | None, optional
+            The function to apply to the y-axis data. The default is None.
+        filter_x : Callable | None, optional
+            The filter for the x-axis data. The default is None.
+        filter_y : Callable | None, optional
+            The filter for the y-axis data. The default is None.
+        **kwargs : dict
+            Keyword arguments for `scipy.interpolate.interp1d`.
+
+        """
+
+        f = self._interpolate_mesa_data(
+            x=x,
+            y=y,
+            kind="history",
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
+        return f
 
     def get_relative_difference(
         self,
@@ -928,30 +1059,24 @@ class Simulation:
         self,
         columns: list[str],
         filename: str = "history.csv",
+        functions: Callable | list[Callable] | None = None,
         filters: Callable | list[Callable] | None = None,
         **kwargs,
     ) -> None:
         """Exports the quantities in `columns` to a csv file."""
 
-        # get the history data
-        df = pd.DataFrame({column: self.history.data(column) for column in columns})
+        data = {}
+        masks = {}
+        filters = [None] * len(columns) if filters is None else filters
+        functions = [None] * len(columns) if functions is None else functions
 
-        if filters is not None:
-            if type(filters) != list:
-                filters = [filters]
+        for column, function, filter in zip(columns, functions, filters):
+            data[column], masks[column] = self._composite_data(keys = column, function=function, filter = filter, kind = 'history')
 
-            # check that len(filters) == len(columns)
-            if len(filters) != len(columns):
-                raise ValueError(
-                    "The number of filters must be the same as the number of columns."
-                )
-
-            mask = np.ones(len(df), dtype=bool)
-            for coulmn, filter in zip(columns, filters):
-                mask &= single_data_mask(df[coulmn], filter)
-            
-            df = df[mask]
-
+        mask = np.all(list(masks.values()), axis = 0)
+        data = {column: data[column][mask] for column in columns}
+        df = pd.DataFrame(data)
+    
         # add index = False to kwargs if not specified
         if kwargs.get("index") is None:
             kwargs["index"] = False
@@ -1048,7 +1173,7 @@ class Simulation:
         model_number: int = -1,
         profile_number: int = -1,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        
+
         if kind == "history":
             mesa_data = self.history
         elif kind == "profile":
@@ -1057,7 +1182,6 @@ class Simulation:
             )
         else:
             raise ValueError("kind must be either 'history' or 'profile'.")
-
 
         if isinstance(keys, str):
 
@@ -1078,27 +1202,31 @@ class Simulation:
             if function is None:
                 raise ValueError("function must be specified if keys is a list.")
             else:
-                print(f"_composite_data: function is not None") if self.verbose else None
+                (
+                    print(f"_composite_data: function is not None")
+                    if self.verbose
+                    else None
+                )
                 values = function(*values)
 
         return values, mask
-    
+
     def composition_plot(
-            self,
-            x: str | list,
-            y: str | list,
-            kind: str,
-            model_number: int = -1,
-            profile_number: int = -1,
-            function_x: Callable | None = None,
-            function_y: Callable | None = None,
-            fig: plt.Figure | None = None,
-            ax: Axes | None = None,
-            set_label: bool = False,
-            set_axes_labels: bool = False,
-            filter_x: Callable | list[Callable] | None = None,
-            filter_y: Callable | list[Callable] | None = None,
-            **kwargs
+        self,
+        x: str | list,
+        y: str | list,
+        kind: str,
+        model_number: int = -1,
+        profile_number: int = -1,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        set_axes_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
     ) -> Tuple[plt.Figure, Axes]:
         """Plots function_y(*y) as a function of function_x(*x) for the  MesaData object defined by `kind`.
 
@@ -1142,7 +1270,14 @@ class Simulation:
             kwargs["label"] = self.sim
 
         print("composition_plot: get x data") if self.verbose else None
-        data_x, mask_x = self._composite_data(x, function_x, filter_x, kind = kind, model_number=model_number, profile_number=profile_number)
+        data_x, mask_x = self._composite_data(
+            x,
+            function_x,
+            filter_x,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
+        )
         (
             print(f"composition_plot: first five data_x entries: {data_x[:5]}")
             if self.verbose
@@ -1155,7 +1290,14 @@ class Simulation:
         )
 
         print("composition_plot: get y data") if self.verbose else None
-        data_y, mask_y = self._composite_data(y, function_y, filter_y, kind = kind, model_number=model_number, profile_number=profile_number)
+        data_y, mask_y = self._composite_data(
+            y,
+            function_y,
+            filter_y,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
+        )
         (
             print(f"composition_plot: first five data_y entries: {data_y[:5]}")
             if self.verbose
@@ -1244,19 +1386,20 @@ class Simulation:
         fig, ax = self.composition_plot(
             x,
             y,
-            kind = "profile",
-            model_number = model_number,
-            profile_number = profile_number,
-            fig = fig,
-            ax = ax,
-            set_label = set_label,
+            kind="profile",
+            model_number=model_number,
+            profile_number=profile_number,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
             set_axes_labels=set_axes_labels,
-            filter_x = filter_x,
-            filter_y = filter_y,
-            **kwargs)
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
         return fig, ax
-    
+
     def profile_composition_plot(
         self,
         x: str | list,
@@ -1307,19 +1450,20 @@ class Simulation:
         fig, ax = self.composition_plot(
             x,
             y,
-            kind = "profile",
-            model_number = model_number,
-            profile_number = profile_number,
-            function_x = function_x,
-            function_y = function_y,
-            fig = fig,
-            ax = ax,
-            set_label = set_label,
-            set_axes_labels = set_axes_labels,
-            filter_x = filter_x,
-            filter_y = filter_y,
-            **kwargs)
-        
+            kind="profile",
+            model_number=model_number,
+            profile_number=profile_number,
+            function_x=function_x,
+            function_y=function_y,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            set_axes_labels=set_axes_labels,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
         return fig, ax
 
     def profile_series_plot(
@@ -1378,7 +1522,7 @@ class Simulation:
                 )
                 label = f"{label:.2e}" if label is not None else None
                 self.profile_composition_plot(
-                    x, 
+                    x,
                     y,
                     model_number=i,
                     function_x=function_x,
@@ -1388,7 +1532,8 @@ class Simulation:
                     set_axes_labels=set_axes_labels,
                     filter_x=filter_x,
                     filter_y=filter_y,
-                    **kwargs)
+                    **kwargs,
+                )
 
         elif profile_numbers != [-1]:
             for i in profile_numbers:
@@ -1409,8 +1554,8 @@ class Simulation:
                     set_axes_labels=set_axes_labels,
                     filter_x=filter_x,
                     filter_y=filter_y,
-                    **kwargs
-                    )
+                    **kwargs,
+                )
 
         else:
             self.profile_composition_plot(
@@ -1423,8 +1568,8 @@ class Simulation:
                 set_axes_labels=set_axes_labels,
                 filter_x=filter_x,
                 filter_y=filter_y,
-                **kwargs
-                )
+                **kwargs,
+            )
 
         return fig, ax
 
@@ -1458,7 +1603,7 @@ class Simulation:
 
         set_label : bool, optional
             If true, add label to plot, by default False
-        
+
         set_axes_labels : bool, optional
             If true, tries to set the axis labels automatically, by default False
 
@@ -1485,14 +1630,15 @@ class Simulation:
         fig, ax = self.composition_plot(
             x,
             y,
-            kind = "history",
-            fig = fig,
-            ax = ax,
-            set_label = set_label,
-            set_axes_labels = set_axes_labels,
-            filter_x = filter_x,
-            filter_y = filter_y,
-            **kwargs)
+            kind="history",
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            set_axes_labels=set_axes_labels,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
         return fig, ax
 
@@ -1540,19 +1686,20 @@ class Simulation:
         fig, ax = self.composition_plot(
             x,
             y,
-            kind = "history",
-            function_x = function_x,
-            function_y = function_y,
-            fig = fig,
-            ax = ax,
-            set_label = set_label,
-            set_axes_labels = set_axes_labels,
-            filter_x = filter_x,
-            filter_y = filter_y,
-            **kwargs)
-        
+            kind="history",
+            function_x=function_x,
+            function_y=function_y,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            set_axes_labels=set_axes_labels,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
         return fig, ax
-        
+
     def history_ratio_plot(
         self,
         x: str,
@@ -1749,7 +1896,9 @@ class Simulation:
                 model_numbers = np.array(model_numbers)
                 model_numbers[model_numbers == -1] = self.log.model_numbers[-1]
                 model_numbers = model_numbers.tolist()
-                x_vals = self.profile_header_df.query("model_number == @model_numbers")[x]
+                x_vals = self.profile_header_df.query("model_number == @model_numbers")[
+                    x
+                ]
 
             # TODO: Add a method for profile_numbers
             else:
@@ -1760,29 +1909,29 @@ class Simulation:
         else:
             x_vals = self.get_mean_profile_data_sequence(
                 x,
-                model_numbers = model_numbers,
-                profile_numbers = profile_numbers,
-                function_x = function_dm,
-                function_y= function_x,
-                filter_x = filter_dm,
-                filter_y = filter_x,
-                **kwargs
+                model_numbers=model_numbers,
+                profile_numbers=profile_numbers,
+                function_x=function_dm,
+                function_y=function_x,
+                filter_x=filter_dm,
+                filter_y=filter_x,
+                **kwargs,
             )
 
         y_vals = self.get_mean_profile_data_sequence(
-                y,
-                model_numbers = model_numbers,
-                profile_numbers = profile_numbers,
-                function_x = function_dm,
-                function_y= function_y,
-                filter_x = filter_dm,
-                filter_y = filter_y,
-                **kwargs
-            )
+            y,
+            model_numbers=model_numbers,
+            profile_numbers=profile_numbers,
+            function_x=function_dm,
+            function_y=function_y,
+            filter_x=filter_dm,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
         ax.plot(x_vals, y_vals, **kwargs)
         ax.set(xlabel=x, ylabel=f"Mean {y}")
 
         return fig, ax
-    
+
     # TODO: Add a profile sequence plot for different header conditions

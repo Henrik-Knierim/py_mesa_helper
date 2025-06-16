@@ -34,6 +34,8 @@ Z_Sol: float = 1 - X_Sol - Y_Sol
 # Jupiter
 R_Jup_in_Sol: float = 0.10054
 R_Jup_in_cm: float = 6.995e9
+R_Jup_equatorial_in_cm: float = 7.1492e9
+R_Jup_polar_in_cm: float = 6.6854e9 
 M_Jup_in_g: float = 1.89813e30
 M_Jup_in_Sol: float = 0.000955
 M_Jup_in_Earth: float = 317.8

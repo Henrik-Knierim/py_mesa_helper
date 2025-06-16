@@ -123,8 +123,14 @@ class SimulationSeries:
     @staticmethod
     def _is_profile_index_valid(path_to_profile_index):
         """Returns True if profiles.index contains more than 2 lines."""
+        
+        if not os.path.exists(path_to_profile_index):
+            print(f"Warning: {path_to_profile_index} does not exist.")
+            return False
+        
         with open(path_to_profile_index, "r") as f:
             lines = f.readlines()
+            print(f"Number of lines in {path_to_profile_index}: {len(lines)}") if len(lines) <= 2 else None
         return len(lines) > 2
 
     def delete_horribly_failed_simulations(self):
@@ -135,8 +141,28 @@ class SimulationSeries:
                 self.series_dir, log_dir, "profiles.index"
             )
             if not self._is_profile_index_valid(path_to_profile_index):
+                print(f"Deleting {log_dir}.") if self.verbose else None
                 os.system(f"rm -r {os.path.join(self.series_dir, log_dir)}")
                 self.log_dirs.remove(log_dir)
+
+    def remove_non_converged_simulations(self, keys: str | list[str], filter: Callable | list[Callable], function: Callable | None = None):
+        """Removes all simulations that are not converged.
+        Parameters
+        ----------
+        keys : str | list[str]
+            The keys to check for convergence. If a list, then the function must take as many inputs as there are keys.
+        function : Callable | None, optional
+            A function that combines the keys. It must take as many inputs as there are keys. The default is None.
+        filter : Callable | list[Callable] | None, optional
+            A function that filters the keys. If a list, then the function must take as many inputs as there are keys. The default is None.
+        """
+
+        for log_dir in self.log_dirs:
+            sim = self.simulations[log_dir]
+            is_converged: bool = sim.is_converged(keys=keys, function=function, filter=filter)
+            if not is_converged:
+                print(f"Removing {log_dir} from the SimulationSeries.") if self.verbose else None
+                self.remove(log_dir)
 
     def remove(self, log_dir):
         """Removes the simulation with `log_dir` from the SimulationSeries."""

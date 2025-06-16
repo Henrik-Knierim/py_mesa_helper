@@ -15,7 +15,6 @@ from mesa_helper.astrophys import (
     _integrate,
 )
 from mesa_helper.utils import single_data_mask, multiple_data_mask, extract_expression
-from scipy.interpolate import interp1d
 from functools import lru_cache
 
 
@@ -41,11 +40,19 @@ class Simulation:
         **kwargs : dict
             Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.
         """
+        # test that verbose is a boolean
+        if not isinstance(verbose, bool):
+            raise TypeError("verbose must be a boolean.")
         self.verbose = verbose
 
         # parent directory of the simulation
+        if not isinstance(parent_dir, str):
+            raise TypeError("parent_dir must be a string.")
         self.parent_dir = parent_dir
 
+        # test that simulation_dir is a string
+        if not isinstance(simulation_dir, str):
+            raise TypeError("simulation_dir must be a string.")
         self.sim = simulation_dir
 
         self.sim_dir = os.path.join(self.parent_dir, self.sim)
@@ -173,6 +180,15 @@ class Simulation:
         )
 
         return np.abs(quantity_value - value) / value < relative_tolerance
+    
+    def is_converged(self, keys: str | list[str], function: Callable | None = None, filter: Callable | list[Callable] | None = None) -> bool:
+        data, mask = self._composite_data(
+            keys = keys,
+            function = function,
+            filter = filter,
+            kind = "history"
+        )
+        return any(data[mask])
 
     # ------------------------------ #
     # ----- Simulation Results ----- #
@@ -594,8 +610,6 @@ class Simulation:
             The value that the quantity should be closest to.
         profile_number : int, optional
             The profile number. The default is -1.
-        log_dir : str, optional
-            The log directory. The default is None.
         **kwargs : dict
             Keyword arguments for `MesaProfileData`.
         """
@@ -827,10 +841,10 @@ class Simulation:
         filter_x: Callable | None = None,
         filter_y: Callable | None = None,
         **kwargs,
-    ) -> interp1d:
+    ) -> Callable:
         """Returns an interpolation function for the quantities (x,y).
 
-        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
+        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `numpy.interp`.
         Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
 
         Parameters
@@ -854,7 +868,7 @@ class Simulation:
         filter_y : Callable | None, optional
             The filter for the y-axis data. The default is None.
         **kwargs : dict
-            Keyword arguments for `scipy.interpolate.interp1d`.
+            Keyword arguments for `numpy.interp`.
 
         """
 
@@ -877,7 +891,7 @@ class Simulation:
 
         mask = mask_x & mask_y
 
-        return interp1d(data_x[mask], data_y[mask], **kwargs)
+        return lambda x: np.interp(x, data_x[mask], data_y[mask], **kwargs)
 
     @lru_cache
     def interpolate_profile_data(
@@ -891,10 +905,10 @@ class Simulation:
         filter_x: Callable | None = None,
         filter_y: Callable | None = None,
         **kwargs,
-    ) -> interp1d:
+    ) -> Callable:
         """Returns an interpolation function for the quantities (x,y).
 
-        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
+        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `numpy.interp`.
         Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
 
         Parameters
@@ -916,7 +930,7 @@ class Simulation:
         filter_y : Callable | None, optional
             The filter for the y-axis data. The default is None.
         **kwargs : dict
-            Keyword arguments for `scipy.interpolate.interp1d`.
+            Keyword arguments for `numpy.interp`.
 
         """
 
@@ -945,10 +959,10 @@ class Simulation:
         filter_x: Callable | None = None,
         filter_y: Callable | None = None,
         **kwargs,
-    ) -> interp1d:
+    ) -> Callable:
         """Returns an interpolation function for the quantities (x,y).
 
-        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `scipy.interpolate.interp1d`.
+        Note that this method retrieves the profile data via `mesa_reader.MesaProfileData.data` and then interpolates the data using `numpy.interp`.
         Hence, you can use the same 'log'-syntax as in `mesa_reader.MesaProfileData.data` for logarithmic interpolation.
 
         Parameters
@@ -966,7 +980,7 @@ class Simulation:
         filter_y : Callable | None, optional
             The filter for the y-axis data. The default is None.
         **kwargs : dict
-            Keyword arguments for `scipy.interpolate.interp1d`.
+            Keyword arguments for `numpy.interp`.
 
         """
 
@@ -1006,7 +1020,7 @@ class Simulation:
         profile_number_compare : int, optional
             The profile number that is compared to the reference profile. The default is -1.
         **kwargs : dict
-            Keyword arguments for `scipy.interpolate.interp1d`.
+            Keyword arguments for `numpy.interp`.
         """
 
         # make sure the interpolation object for [log, profile_number, x, y] exists

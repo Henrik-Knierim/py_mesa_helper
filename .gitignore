@@ -3,4 +3,5 @@ __pycache__
 build/
 dist/
 tests/
+install_with_tests.sh
 *.egg-info/

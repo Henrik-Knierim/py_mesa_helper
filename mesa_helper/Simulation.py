@@ -321,6 +321,7 @@ class Simulation:
     def integrate(
         self,
         keys: str | list,
+        dx_key: str | None = None,
         model_number: int = -1,
         profile_number: int = -1,
         unit: str | float | None = None,
@@ -365,14 +366,15 @@ class Simulation:
             If `kind` is not 'profile' or 'history'.
         """
 
-        dx_dict = {"profile": "dm", "history": "star_age"}
+        if dx_key is None:
+            dx_key = "dm" if kind == "profile" else "star_age"
 
         # raise an error if kind is not 'profile' or 'history'
-        if kind not in dx_dict.keys():
+        if kind not in ["profile", "history"]:
             raise ValueError("kind must be either 'profile' or 'history'.")
 
         dx, mask_dx = self._composite_data(
-            keys=dx_dict[kind],
+            keys=dx_key,
             function=function_x,
             filter=filter_x,
             kind=kind,
@@ -478,6 +480,7 @@ class Simulation:
     def add_profile_data(
         self,
         keys: str | list,
+        dx_key: str | None = None,
         model_number: int = -1,
         profile_number: int = -1,
         kind: str | None = "integrate",
@@ -523,10 +526,6 @@ class Simulation:
         if kind not in ["integrate", "mean", None]:
             raise ValueError("kind must be either 'integrate', 'mean', or None.")
 
-        # if kind is not callable, then keys must be a string
-        if isinstance(kind, str) and not isinstance(keys, str):
-            raise ValueError("If kind is not a function, then keys must be a string.")
-
         # * name of the results column
         if name is None and isinstance(kind, str):
             result_key = kind + "_" + keys
@@ -542,6 +541,7 @@ class Simulation:
             print(f"add_profile_data: integrate {keys}") if self.verbose else None
             value = self.integrate(
                 keys=keys,
+                dx_key=dx_key,
                 model_number=model_number,
                 profile_number=profile_number,
                 unit=unit,
@@ -722,6 +722,7 @@ class Simulation:
     def get_integrated_profile_data_sequence(
         self,
         keys: str | list,
+        dx_key: str | None = None,
         model_numbers: list[int] | np.ndarray | None = None,
         profile_numbers: list[int] | np.ndarray | None = None,
         unit: str | float | None = None,
@@ -756,6 +757,7 @@ class Simulation:
         def local_integrate(model_number: int = -1, profile_number: int = -1):
             return self.integrate(
                 keys,
+                dx_key=dx_key,
                 model_number=model_number,
                 profile_number=profile_number,
                 unit=unit,
@@ -834,8 +836,8 @@ class Simulation:
         x: str,
         y: str,
         kind: str,
-        model_number: list[int] | np.ndarray | None = None,
-        profile_number: list[int] | np.ndarray | None = None,
+        model_number: int = -1,
+        profile_number: int = -1,
         function_x: Callable | None = None,
         function_y: Callable | None = None,
         filter_x: Callable | None = None,
@@ -891,15 +893,15 @@ class Simulation:
 
         mask = mask_x & mask_y
 
-        return lambda x: np.interp(x, data_x[mask], data_y[mask], **kwargs)
+        return lambda x: np.interp(x, data_x[mask][::-1], data_y[mask][::-1], **kwargs)
 
     @lru_cache
     def interpolate_profile_data(
         self,
         x: str,
         y: str,
-        model_number: list[int] | np.ndarray | None = None,
-        profile_number: list[int] | np.ndarray | None = None,
+        model_number: int  = -1,
+        profile_number: int = -1,
         function_x: Callable | None = None,
         function_y: Callable | None = None,
         filter_x: Callable | None = None,

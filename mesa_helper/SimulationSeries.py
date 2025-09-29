@@ -244,6 +244,7 @@ class SimulationSeries:
 
         print("history_keys = ", history_keys) if self.verbose else None
 
+        # TODO: There is a bug here that only the last entry in the history_keys is added to the results
         for history_key in history_keys:
             [
                 self.simulations[log_dir].add_history_data(history_key, condition, value, key_name)
@@ -263,32 +264,39 @@ class SimulationSeries:
             print("dfs = ", filtered_dfs) if self.verbose else None
             self.merge_results(filtered_dfs)
 
-    # TODO: Make the function reevaluate if inputs like the mass unit are changed
-    @lru_cache
     def add_profile_data(
         self,
-        quantity: str,
-        q0: float = 0.0,
-        q1: float = 1.0,
+        keys: str | list,
+        dx_key: str | None = None,
+        model_number: int = -1,
         profile_number: int = -1,
-        kind: str = "integrated",
+        kind: str | None = "integrate",
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
         name: str | None = None,
-        mass_unit: str = "g",
+        unit: str | float | None = None,
         **kwargs,
     ):
         """Computes the integrated quantity from q0 to q1 and adds it to `self.results`."""
         if name is None:
-            name = kind + "_" + quantity
+            name = kind + "_" + keys if isinstance(keys, str) else kind + "_" + "_".join(keys)
 
         [
             self.simulations[log_dir].add_profile_data(
-                quantity=quantity,
-                q0=q0,
-                q1=q1,
+                keys=keys,
+                dx_key=dx_key,
+                model_number=model_number,
                 profile_number=profile_number,
                 kind=kind,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
                 name=name,
-                mass_unit=mass_unit,
+                unit=unit,
+                **kwargs,
             )
             for log_dir in self.log_dirs
         ]
@@ -304,8 +312,8 @@ class SimulationSeries:
             for df in dfs
         ]
         self.merge_results(filtered_dfs)
-
-    @lru_cache
+        
+    # TODO: Adjust to new method in Simulation
     def add_profile_data_at_condition(
         self,
         quantity: str,

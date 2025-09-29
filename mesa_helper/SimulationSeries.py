@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from typing import Callable, Tuple
 from mesa_helper.Simulation import Simulation
+from mesa_helper.utils import sort_list_by_variable
 
 
 # Todo: add a method to remove simulations from the class
@@ -18,6 +19,7 @@ class SimulationSeries:
         self,
         series_dir: str,
         delete_horribly_failed_simulations = False,
+        key_to_sort: str | None = None,
         **kwargs,
     ) -> None:
         """Initializes the Simulation object.
@@ -27,6 +29,8 @@ class SimulationSeries:
             The simulation suite. The default is ''.
         check_age_convergence : bool, optional
             If True, then the simulations that do not converge to the final age are removed. The default is True.
+        key_to_sort : str, optional
+            The key to sort the simulations by. If none, then sorts for the first free parameter. The default is None.
         **kwargs : dict
             Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.
         """
@@ -43,8 +47,7 @@ class SimulationSeries:
         ]
 
         # sort the log directories
-        # maybe you need to modify this if you have multiple suite parameters
-        self.log_dirs.sort()
+        self.log_dirs = sort_list_by_variable(self.log_dirs, key_to_sort)
 
         # import sim results
         # first, delete horribly failed simulations
@@ -71,7 +74,12 @@ class SimulationSeries:
         self.simulations = {}
 
         for log_dir in self.log_dirs:
-            self.simulations[log_dir] = Simulation(log_dir)
+            
+            if self.verbose:
+                print("_init_Simulation: parent_dir = ", self.series_dir)
+                print("_init_Simulation: simulation_dir = ", log_dir)
+
+            self.simulations[log_dir] = Simulation(simulation_dir = log_dir, parent_dir=self.series_dir)
 
     @staticmethod
     def extract_value(string, free_param: str):
@@ -115,8 +123,14 @@ class SimulationSeries:
     @staticmethod
     def _is_profile_index_valid(path_to_profile_index):
         """Returns True if profiles.index contains more than 2 lines."""
+        
+        if not os.path.exists(path_to_profile_index):
+            print(f"Warning: {path_to_profile_index} does not exist.")
+            return False
+        
         with open(path_to_profile_index, "r") as f:
             lines = f.readlines()
+            print(f"Number of lines in {path_to_profile_index}: {len(lines)}") if len(lines) <= 2 else None
         return len(lines) > 2
 
     def delete_horribly_failed_simulations(self):
@@ -127,8 +141,28 @@ class SimulationSeries:
                 self.series_dir, log_dir, "profiles.index"
             )
             if not self._is_profile_index_valid(path_to_profile_index):
+                print(f"Deleting {log_dir}.") if self.verbose else None
                 os.system(f"rm -r {os.path.join(self.series_dir, log_dir)}")
                 self.log_dirs.remove(log_dir)
+
+    def remove_non_converged_simulations(self, keys: str | list[str], filter: Callable | list[Callable], function: Callable | None = None):
+        """Removes all simulations that are not converged.
+        Parameters
+        ----------
+        keys : str | list[str]
+            The keys to check for convergence. If a list, then the function must take as many inputs as there are keys.
+        function : Callable | None, optional
+            A function that combines the keys. It must take as many inputs as there are keys. The default is None.
+        filter : Callable | list[Callable] | None, optional
+            A function that filters the keys. If a list, then the function must take as many inputs as there are keys. The default is None.
+        """
+
+        for log_dir in self.log_dirs:
+            sim = self.simulations[log_dir]
+            is_converged: bool = sim.is_converged(keys=keys, function=function, filter=filter)
+            if not is_converged:
+                print(f"Removing {log_dir} from the SimulationSeries.") if self.verbose else None
+                self.remove(log_dir)
 
     def remove(self, log_dir):
         """Removes the simulation with `log_dir` from the SimulationSeries."""
@@ -175,6 +209,7 @@ class SimulationSeries:
         history_keys: str | list[str],
         condition: str = "model_number",
         value: int | float = -1,
+        key_names: str | list[str] | None = None
     ) -> None:
         """Adds `history_keys` to `self.results`.
 
@@ -186,21 +221,33 @@ class SimulationSeries:
             The quantity that should be closest to `value`. The default is 'model_number'.
         value : int | float, optional
             The value that the quantity should be closest to. The default is -1.
+        key_names : str | list[str] | None, optional
+            The names of the results columns. If None, then the history keys are used. The default is None.
         """
 
         if isinstance(history_keys, str):
             history_keys = [history_keys]
 
+        if key_names is None:
+            key_names = history_keys
+        elif isinstance(key_names, str) and len(history_keys) == 1:
+            key_names = [key_names]
+        elif len(key_names) != len(history_keys):
+            raise ValueError("key_names must have the same length as history_keys.")
+        
         # remove the history key if it is already in the results
-        for history_key in history_keys:
-            if history_key in self.results.columns:
+        # also remove the key name if it is already in the results
+        for key_name, history_key in zip(key_names, history_keys):
+            if key_name in self.results.columns:
                 history_keys.remove(history_key)
+                key_names.remove(key_name)
 
         print("history_keys = ", history_keys) if self.verbose else None
 
+        # TODO: There is a bug here that only the last entry in the history_keys is added to the results
         for history_key in history_keys:
             [
-                self.simulations[log_dir].add_history_data(history_key)
+                self.simulations[log_dir].add_history_data(history_key, condition, value, key_name)
                 for log_dir in self.log_dirs
             ]
             dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
@@ -217,32 +264,39 @@ class SimulationSeries:
             print("dfs = ", filtered_dfs) if self.verbose else None
             self.merge_results(filtered_dfs)
 
-    # TODO: Make the function reevaluate if inputs like the mass unit are changed
-    @lru_cache
     def add_profile_data(
         self,
-        quantity: str,
-        q0: float = 0.0,
-        q1: float = 1.0,
+        keys: str | list,
+        dx_key: str | None = None,
+        model_number: int = -1,
         profile_number: int = -1,
-        kind: str = "integrated",
+        kind: str | None = "integrate",
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
         name: str | None = None,
-        mass_unit: str = "g",
+        unit: str | float | None = None,
         **kwargs,
     ):
         """Computes the integrated quantity from q0 to q1 and adds it to `self.results`."""
         if name is None:
-            name = kind + "_" + quantity
+            name = kind + "_" + keys if isinstance(keys, str) else kind + "_" + "_".join(keys)
 
         [
             self.simulations[log_dir].add_profile_data(
-                quantity=quantity,
-                q0=q0,
-                q1=q1,
+                keys=keys,
+                dx_key=dx_key,
+                model_number=model_number,
                 profile_number=profile_number,
                 kind=kind,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
                 name=name,
-                mass_unit=mass_unit,
+                unit=unit,
+                **kwargs,
             )
             for log_dir in self.log_dirs
         ]
@@ -258,8 +312,8 @@ class SimulationSeries:
             for df in dfs
         ]
         self.merge_results(filtered_dfs)
-
-    @lru_cache
+        
+    # TODO: Adjust to new method in Simulation
     def add_profile_data_at_condition(
         self,
         quantity: str,
@@ -393,6 +447,7 @@ class SimulationSeries:
         self,
         columns: list[str],
         file_labeling: Callable[[str], str] | None = None,
+        filters: Callable | list[Callable] | None = None,
         **kwargs,
     ) -> None:
         """Exports the history quantities in `columns` to a csv file for every simulation in the SimulationSeries instance.
@@ -402,7 +457,7 @@ class SimulationSeries:
         columns : list[str]
             The columns to be exported.
         file_labeling : Callable[[str], str] | None, optional
-            A function that labels the file. The default is None. The input of the function is the simulation key.
+            A function that labels the output files. The input of the function is the simulation key. If none, writes the files into the current directory with `<simulation name>.csv`. The default is None.
         **kwargs : dict
             Keyword arguments for `pd.DataFrame.to_csv`.
         """
@@ -412,7 +467,7 @@ class SimulationSeries:
 
         for sim in self.simulations.values():
             filename = file_labeling(sim.sim) + ".csv"
-            sim.export_history_data(columns=columns, filename=filename, **kwargs)
+            sim.export_history_data(columns=columns, filename=filename, filters = filters, **kwargs)
 
     def export_profile_data(
         self,
@@ -558,6 +613,165 @@ class SimulationSeries:
             sim.history_plot(x, y, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y=filter_y, **kwargs)
 
         return fig, ax
+    
+    def history_composition_plot(
+        self,
+        x: str | list,
+        y: str | list,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ):
+        """Plots y_numerator / y_denominator as a function of x for the history data.
+
+        Parameters
+        ----------
+        x : str | list
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `function_x`.
+        y : str | list
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `function_y`.
+        function_x : Callable | None, optional
+            A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
+        function_y : Callable | None, optional
+            A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        filter_x : Callable | list[Callable] | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            A function that filters the y-values. The default is None.
+
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for sim in self.simulations.values():
+            sim.history_composition_plot(
+                x,
+                y,
+                function_x=function_x,
+                function_y=function_y,
+                fig=fig,
+                ax=ax,
+                set_label=set_label,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **kwargs,
+            )
+
+        return fig, ax
+    
+    def history_ratio_plot(self, x: str, y_numerator: str, y_denominator: str, fig: plt.Figure | None = None, ax: Axes | None = None, set_label: bool = False, filter_x: Callable | None = None, filter_y_numerator: Callable | None = None, filter_y_denominator: Callable | None = None, **kwargs):
+        """Plots y_numerator / y_denominator as a function of x for the history data.
+
+        Parameters
+        ----------
+        x : str
+            The x-axis of the history data.
+        y_numerator : str
+            The history quantatiy that's the numerator of the ratio.
+        y_denominator : str
+            The history quantatiy that's the denominator of the ratio.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        filter_x : Callable | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y_numerator : Callable | None, optional
+            A function that filters the y_numerator-values. The default is None.
+        filter_y_denominator : Callable | None, optional
+            A function that filters the y_denominator-values. The default is None.
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for sim in self.simulations.values():
+            sim.history_ratio_plot(x, y_numerator, y_denominator, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y_numerator=filter_y_numerator, filter_y_denominator=filter_y_denominator, **kwargs)
+
+        return fig, ax
+    
+    def profile_composition_plot(
+        self,
+        x: str | list,
+        y: str | list,
+        model_number: int = -1,
+        profile_number: int = -1,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        set_axes_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ):
+        """Plots function_y(*y) as a function of function_x(*x) for the profile data specified by the model number or profile number.
+
+        Parameters
+        ----------
+        x : str | list
+            The x-axis of the plot. If a list, then the list should contain the quantities for the x-axis, which are then combined using `function_x`.
+        y : str | list
+            The y-axis of the plot. If a list, then the list should contain the quantities for the y-axis, which are then combined using `function_y`.
+        model_number : int, optional
+            The model number of the profile. The default is -1.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        function_x : Callable | None, optional
+            A function that combines the x-values. It must take as many inputs as there are x values. The default is None.
+        function_y : Callable | None, optional
+            A function that combines the y-values. It must take as many inputs as there are y values. The default is None.
+        fig : plt.Figure | None, optional
+            The figure. The default is None.
+        ax : Axes | None, optional
+            The axes. The default is None. If None, a new figure is created.
+        set_label : bool, optional
+            If true, add label to plot, by default False
+        set_axes_labels : bool, optional
+            If true, tries to set the axis labels automatically, by default False
+        filter_x : Callable | list[Callable] | None, optional
+            A function that filters the x-values. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            A function that filters the y-values. The default is None.
+
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for sim in self.simulations.values():
+            sim.profile_composition_plot(
+                x = x,
+                y = y,
+                model_number = model_number,
+                profile_number = profile_number,
+                function_x = function_x,
+                function_y = function_y,
+                fig = fig,
+                ax = ax,
+                set_label = set_label,
+                set_axes_labels = set_axes_labels,
+                filter_x = filter_x,
+                filter_y = filter_y,
+                **kwargs,
+            )
+
+        return fig, ax
 
     def relative_difference_of_two_simulations_plot(
         self,
@@ -625,6 +839,7 @@ class SimulationSeries:
         return fig, ax
 
 
+    # Todo: update to new method in Simulation
     def mean_profile_sequence_plot(
         self,
         x: str,

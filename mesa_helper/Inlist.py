@@ -2,6 +2,7 @@ import os
 import numpy as np
 import shutil
 from mesa_helper.astrophys import *
+from mesa_helper.utils import *
 from typing import Callable
 
 OptionType = float | bool | str | int | np.floating
@@ -11,8 +12,7 @@ OptionType = float | bool | str | int | np.floating
 class Inlist:
     """Class for reading and writing inlist files."""
 
-    # TODO: verbose option and debug option
-    def __init__(self, name: str, **kwargs) -> None:
+    def __init__(self, name: str, verbose: bool = False, **kwargs) -> None:
         """Initializes an Inlist object."""
 
         # name of the inlist file
@@ -23,10 +23,11 @@ class Inlist:
             self.original_inlist: str = file.read()
 
         # define path to where the program looks for the MESA options files
+        self._set_mesa_path(kwargs.get("mesa_path", None))
         self._set_mesa_options_path(kwargs.get("mesa_options_path", None))
 
         # control how much information is printed
-        self.verbose: bool = kwargs.get("verbose", False)
+        self.verbose: bool = verbose
         self.debug: bool = kwargs.get("debug", False)
 
     def __str__(self) -> str:
@@ -44,20 +45,29 @@ class Inlist:
         self.restore_inlist()
 
     ### *changin options ###
+    def _set_mesa_path(self, path: str | None = None) -> None:
+        """Sets path to the MESA executable."""
+        if path is None:
+            try:
+                self.mesa_path = os.environ["MESA_DIR"]
+            except KeyError:
+                raise ValueError("The environment variable $MESA_DIR is not defined.")
+        else:
+            self.mesa_path = path
 
     def _set_mesa_options_path(self, path: str | None = None) -> None:
         """Sets path to the MESA options files."""
         if path is None:
             try:
                 self.mesa_options_path = os.path.join(
-                    os.environ["MESA_DIR"], "star", "defaults"
+                    self.mesa_path, "star", "defaults"
                 )
             except KeyError:
-                raise ValueError("The environment variable $MESA_DIR is not defined.")
+                raise ValueError("self.mesa_path is not defined.")
         else:
             self.mesa_options_path = path
 
-    def _is_option(self, section: str, option: str) -> bool:
+    def _is_option(self, section: str, option: str, mesa_option_dir: str | None = None) -> bool:
         """Checks if `option` is in `section` of `MESA`.
 
         Parameters
@@ -69,7 +79,10 @@ class Inlist:
 
         """
 
-        src: str = os.path.join(self.mesa_options_path, f"{section}.defaults")
+        mesa_option_dir = self.mesa_options_path if mesa_option_dir is None else mesa_option_dir
+        
+        src = os.path.join(mesa_option_dir, f"{section}.defaults")
+
         with open(src, "r") as file:
             for line in file:
 
@@ -93,9 +106,14 @@ class Inlist:
             return "&star_job"
         elif self._is_option("pgstar", option):
             return "&pgstar"
+        elif self._is_option("eos", option, mesa_option_dir = os.path.join(self.mesa_path, "eos", "defaults")):
+            return "&eos"
+        elif self._is_option("kap", option, mesa_option_dir = os.path.join(self.mesa_path, "kap", "defaults")):
+            return "&kap"
         else:
             raise ValueError(f"Option {option} not found.")
 
+    # TODO: return the default value if the option is not found
     def read_option(self, option: str) -> OptionType | None:
         """Reads the value of an option in an inlist file."""
         with open(self.name, "r") as file:
@@ -134,15 +152,19 @@ class Inlist:
         list[str]
             List of lines of the inlist file with the new option value.
         """
+        print(f"\nEnter _change_lines") if self.verbose else None
         separator: str = "="
 
         with open(self.name, "r") as file:
 
             lines: list[str] = file.readlines()
+            if self.debug:
+                for i, l in enumerate(lines):
+                    print(f"\tLine {i}: {l}")
 
             for i, l in enumerate(lines):
                 if option in l:
-
+                    print(f"\tFound option {option} in line {i}") if self.verbose else None
                     # test if this is in fact the right option
 
                     # for ignoring fortran comments after the value
@@ -153,6 +175,8 @@ class Inlist:
 
                     # true if the occurence exactly matches with option
                     is_option: bool = line_splitted[0].strip() == option
+                    print(f"\tIs option: {is_option}") if self.verbose else None
+
                     if is_option:
                         index_option: int = i
 
@@ -207,33 +231,40 @@ class Inlist:
         value : float | int | str | bool
             The value to set for the option.
         """
+        print(f"\nEnter set_option") if self.verbose else None
+        print(f"\tOption: {option}, Value: {value}") if self.verbose else None
+
         # conversion such that output is in ''
         if type(value) == str:
+            print(f"\tModify `value` because it is a string.") if self.verbose else None
             value = f"'{value}'"
 
         # check if the option is already present. If not, create it
         try:
+            print(f"\tTry to change lines") if self.verbose else None
             lines = self._change_lines(option, value)
         except:
+            print(f"\tCreate lines") if self.verbose else None
             lines = self._create_lines(option, value)
 
         # write new lines into the inlist
+        print(f"\tWrite new lines into the inlist") if self.verbose else None
         with open(self.name, "w") as file:
             file.writelines(lines)
 
-        print(f"Set {option} to {Inlist._fortran_format(value)}") if self.verbose else None
+        print(f"\tSet {option} to {Inlist._fortran_format(value)}\n") if self.verbose else None
 
     def set_multiple_options(self, **options: OptionType) -> None:
         """Sets multiple options in an inlist file.
 
         Parameters
         ----------
-        options_dict : dict
-            Dictionary with options of the format {'option_name': option_value, ...}
+        options: int | float | str | bool
+            The options to set in the inlist file. These are given as keyword arguments.
 
         Examples
         --------
-        >>> set_multiple_options({'pgstar_flag': True, 'log_directory': 'LOGS/test'})
+        >>> set_multiple_options(mesh_delta_coeff=0.1, log_directory='LOGS/test')
         """
 
         # go through all options and set them
@@ -283,6 +314,28 @@ class Inlist:
         """Given the radius of the planet in Jupiter radii, sets the radius of the planet in centimeters."""
         R_p_in_cm: float = R_Jup_in_cm * R_p_in_R_J
         self.set_option("radius_in_cm_for_create_initial_model", R_p_in_cm)
+
+    # Todo: test this function
+    def set_initial_abundances(self, gradient: str, value: float, scaling: Callable | None = None) -> None:
+
+        # check if gradient is 'Y' or 'Z'
+        validate_option(gradient, ["Y", "Z"])
+
+        if scaling is None and gradient == "Z":
+            scaling = lambda Z: scaled_solar_ratio_mass_fractions(Z=value)
+
+        elif scaling is None and gradient == "Y":
+            scaling = lambda Y: (1-Y, Y, 0.0)
+
+        elif scaling is None:
+            # something went wrong
+            raise ValueError("scaling must be given if gradient is not 'Y' or 'Z'.")
+            
+        X, Y, Z = scaling(value)
+
+        self.set_option("initial_z", Y)
+        self.set_option("initial_y", Z)
+
 
     @staticmethod
     def _fortran_float(value: float|np.floating)-> str:
@@ -666,6 +719,16 @@ class Inlist:
         logs_path = Inlist.create_logs_path(**kwargs)
         self.set_option("log_directory", logs_path)
 
+    @staticmethod
+    def create_model_filename(**kwargs) -> str:
+        """Creates a model filename using the functionality from `create_logs_path`."""
+        
+        mod_parent_dir = kwargs.get("parent_dir", "")
+        mod_file  = Inlist.create_logs_path(logs_parent_dir = mod_parent_dir, **kwargs)
+        mod_file += ".mod"
+
+        return mod_file
+
     # ? Do we need this function?
     @staticmethod
     def set_multiple_options_for_multiple_inlists(options_dict: dict) -> None:
@@ -732,7 +795,7 @@ class Inlist:
 
     @staticmethod
     def create_relax_entropy_file(
-        s_of_m_kerg: Callable,
+        s_of_m_kerg: Callable | float,
         relax_entropy_filename: str = "relax_entropy_file.dat",
         n_points: int = 1000,
     ) -> None:
@@ -742,12 +805,18 @@ class Inlist:
         ----------
         s_of_m_kerg : Callable
             A function that returns the entropy as a function of mass in kergs. The function is expected take m/M_p as an argument, i.e., relative in mass.
+            You can also provide a float, in which case the function will be s(m) = s_of_m_kerg.
         relax_entropy_filename : str, optional
             The name of the relax entropy file. The default is 'relax_entropy_file.dat'.
         n_points : int, optional
             The number of points to use in the entropy profile. The default is 1000.
         """
 
+        # if s_of_m_kerg is a number, create a homogeneous entropy profile
+        if isinstance(s_of_m_kerg, (float, int, np.floating, np.integer)):
+            Inlist.create_relax_entropy_file_homogeneous(s_of_m_kerg, relax_entropy_filename)
+            return
+        
         # tests
         if not callable(s_of_m_kerg):
             raise TypeError("s_of_m_kerg must be a function.")

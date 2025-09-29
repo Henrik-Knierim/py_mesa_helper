@@ -2,7 +2,7 @@ import os
 class Rn:
     """Modifies rn-files"""
 
-    def __init__(self, name : str, verbose: bool = False) -> None:
+    def __init__(self, name : str, verbose: bool = False, **kwargs) -> None:
         """Initializes rn-file modifier.
 
         Parameters
@@ -11,6 +11,7 @@ class Rn:
             file name of the rn-script
         """
         self.verbose = verbose
+        self.debug = kwargs.get("debug", False)
 
         # name/path to rn script that should be modified
         self.name = name
@@ -70,6 +71,12 @@ class Rn:
 
         print(f"Set mod-file name to {mod_file_name}") if self.verbose else None
 
-    def run(self):
+    def run(self, do_restart : bool = False, photo : str | None = None) -> None:
         """Runs the rn-script"""
-        os.system(f'./{self.name}')
+        
+        if do_restart and photo is not None:
+            os.system(f"./re {photo}")
+        elif do_restart:
+            os.system("./re")
+        else:
+            os.system(f'./{self.name}')

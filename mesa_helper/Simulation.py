@@ -893,7 +893,15 @@ class Simulation:
 
         mask = mask_x & mask_y
 
-        return lambda x: np.interp(x, data_x[mask][::-1], data_y[mask][::-1], **kwargs)
+        data_x = data_x[mask]
+        data_y = data_y[mask]
+        
+        # Check if x data is decreasing, and if so, reverse both arrays
+        if len(data_x) > 1 and data_x[0] > data_x[-1]:
+            data_x = data_x[::-1]
+            data_y = data_y[::-1]
+        
+        return lambda x: np.interp(x, data_x, data_y, **kwargs)
 
     @lru_cache
     def interpolate_profile_data(

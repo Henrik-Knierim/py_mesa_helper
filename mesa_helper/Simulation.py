@@ -680,11 +680,11 @@ class Simulation:
         """Returns the quantity in a DataFrame where condition is closest to value."""
         return df.iloc[(df[condition] - value).abs().argsort()[:1]][quantity].values[0]
 
-    @lru_cache
-    def get_profile_at_header_condition(
+
+    def get_model_number_at_profile_header_condition(
         self, condition: str, value: float | int, **kwargs
-    ) -> mr.MesaData:
-        """Returns the profile data for `quantity` where the profile header `condition` is closest to `value`."""
+    ) -> int:
+        """Returns the model number where the profile header `condition` is closest to `value`."""
 
         # check if the profile header values exist in `self.profile_header_df`
         # if not, then create it
@@ -698,6 +698,13 @@ class Simulation:
             self.profile_header_df, "model_number", condition, value
         )
 
+        return model_number
+    
+    def get_profile_at_header_condition(
+        self, condition: str, value: float | int, **kwargs
+    ) -> mr.MesaData:
+        """Returns the profile data for `quantity` where the profile header `condition` is closest to `value`."""
+        model_number = self.get_model_number_at_profile_header_condition(condition, value, **kwargs)
         return self.log.profile_data(model_number=model_number, **kwargs)
 
     def get_profile_data_at_header_condition(
@@ -903,7 +910,7 @@ class Simulation:
         
         return lambda x: np.interp(x, data_x, data_y, **kwargs)
 
-    @lru_cache
+
     def interpolate_profile_data(
         self,
         x: str,
@@ -959,7 +966,6 @@ class Simulation:
 
         return f
 
-    @lru_cache
     def interpolate_history_data(
         self,
         x: str,

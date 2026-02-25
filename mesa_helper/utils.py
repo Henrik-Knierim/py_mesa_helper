@@ -56,13 +56,18 @@ def single_data_mask(data: np.ndarray, mask_function: Callable | None = None) ->
 
     return mask_function(data)
 
-def multiple_data_mask(input_data: list[np.ndarray], mask_filters: list[Callable | None] | None = None) -> np.ndarray:
+def multiple_data_mask(input_data, mask_filters):
     """Returns the data mask for the input_data."""
 
     mask = np.ones_like(input_data[0], dtype=bool)
     if mask_filters is None:
         return mask
 
+    # If mask_filters is a single function, apply it to all input_data
+    if callable(mask_filters):
+        return mask & mask_filters(*input_data)
+    
+    # Otherwise: list of filters (existing logic)
     for key, filter in zip(input_data, mask_filters):
         mask &= (mask if filter is None else filter(key))
     return mask

@@ -180,13 +180,81 @@ class Simulation:
         )
 
         return np.abs(quantity_value - value) / value < relative_tolerance
-    
-    def is_converged(self, keys: str | list[str], function: Callable | None = None, filter: Callable | list[Callable] | None = None) -> bool:
+
+    def check_if_greater_than(
+        self,
+        quantity: str,
+        value: float,
+        model_number: int = -1,
+    ) -> bool:
+        """Checks if the quantity is greater than a certain value to a certain tolerance.
+
+        Parameters
+        ----------
+        quantity : str
+            quantity to check
+        value : float
+            value to compare to
+        model_number : int, optional
+            model number at which to evaluate the quantity, by default -1
+        relative_tolerance : float, optional
+            tolerance below which a quantitiy is considered to be conserved, by default 1e-3
+
+        Returns
+        -------
+        bool
+            True if the quantity is conserved to the given tolerance
+        """
+
+        if model_number < 0:
+            model_number = self.history.model_number[model_number]
+
+        quantity_value: np.floating | np.integer = self.history.data_at_model_number(
+            quantity, model_number
+        )
+
+        return quantity_value > value
+
+    def check_if_less_than(
+        self,
+        quantity: str,
+        value: float,
+        model_number: int = -1,
+    ) -> bool:
+        """Checks if the quantity is less than a certain value to a certain tolerance.
+
+        Parameters
+        ----------
+        quantity : str
+            quantity to check
+        value : float
+            value to compare to
+        model_number : int, optional
+            model number at which to evaluate the quantity, by default -1
+
+        Returns
+        -------
+        bool
+            True if the quantity is conserved to the given tolerance
+        """
+
+        if model_number < 0:
+            model_number = self.history.model_number[model_number]
+
+        quantity_value: np.floating | np.integer = self.history.data_at_model_number(
+            quantity, model_number
+        )
+
+        return quantity_value < value
+
+    def is_converged(
+        self,
+        keys: str | list[str],
+        function: Callable | None = None,
+        filter: Callable | list[Callable] | None = None,
+    ) -> bool:
         data, mask = self._composite_data(
-            keys = keys,
-            function = function,
-            filter = filter,
-            kind = "history"
+            keys=keys, function=function, filter=filter, kind="history"
         )
         return any(data[mask])
 
@@ -680,7 +748,6 @@ class Simulation:
         """Returns the quantity in a DataFrame where condition is closest to value."""
         return df.iloc[(df[condition] - value).abs().argsort()[:1]][quantity].values[0]
 
-
     def get_model_number_at_profile_header_condition(
         self, condition: str, value: float | int, **kwargs
     ) -> int:
@@ -699,12 +766,14 @@ class Simulation:
         )
 
         return model_number
-    
+
     def get_profile_at_header_condition(
         self, condition: str, value: float | int, **kwargs
     ) -> mr.MesaData:
         """Returns the profile data for `quantity` where the profile header `condition` is closest to `value`."""
-        model_number = self.get_model_number_at_profile_header_condition(condition, value, **kwargs)
+        model_number = self.get_model_number_at_profile_header_condition(
+            condition, value, **kwargs
+        )
         return self.log.profile_data(model_number=model_number, **kwargs)
 
     def get_profile_data_at_header_condition(
@@ -902,20 +971,19 @@ class Simulation:
 
         data_x = data_x[mask]
         data_y = data_y[mask]
-        
+
         # Check if x data is decreasing, and if so, reverse both arrays
         if len(data_x) > 1 and data_x[0] > data_x[-1]:
             data_x = data_x[::-1]
             data_y = data_y[::-1]
-        
-        return lambda x: np.interp(x, data_x, data_y, **kwargs)
 
+        return lambda x: np.interp(x, data_x, data_y, **kwargs)
 
     def interpolate_profile_data(
         self,
         x: str,
         y: str,
-        model_number: int  = -1,
+        model_number: int = -1,
         profile_number: int = -1,
         function_x: Callable | None = None,
         function_y: Callable | None = None,
@@ -1101,12 +1169,14 @@ class Simulation:
         functions = [None] * len(columns) if functions is None else functions
 
         for column, function, filter in zip(columns, functions, filters):
-            data[column], masks[column] = self._composite_data(keys = column, function=function, filter = filter, kind = 'history')
+            data[column], masks[column] = self._composite_data(
+                keys=column, function=function, filter=filter, kind="history"
+            )
 
-        mask = np.all(list(masks.values()), axis = 0)
+        mask = np.all(list(masks.values()), axis=0)
         data = {column: data[column][mask] for column in columns}
         df = pd.DataFrame(data)
-    
+
         # add index = False to kwargs if not specified
         if kwargs.get("index") is None:
             kwargs["index"] = False

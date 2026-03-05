@@ -529,17 +529,17 @@ class Inlist:
         test
 
         >>> # Example 2: directory_style is 'id'
-        >>> directory = Inlist._create_directory_name_from_style(folder_style='id', inlist_name='inlist', option='initial_mass')
+        >>> directory = Inlist._create_directory_name_from_style(directory_style='id', inlist_name='inlist', option='initial_mass')
         >>> print(directory)
         1
 
         >>> # Example 3: directory_style is str
-        >>> directory = Inlist._create_directory_name_from_style(folder_style='initial_mass', initial_mass=1.0)
+        >>> directory = Inlist._create_directory_name_from_style(directory_style='initial_mass', initial_mass=1.0)
         >>> print(directory)
         initial_mass_1.0
 
         >>> # Example 4: directory_style is list
-        >>> directory = Inlist._create_directory_name_from_style(folder_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
+        >>> directory = Inlist._create_directory_name_from_style(directory_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
         >>> print(directory)
         initial_mass_1.0_metallicity_0.02
         """

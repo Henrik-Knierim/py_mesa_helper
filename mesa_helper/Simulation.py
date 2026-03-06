@@ -2034,4 +2034,43 @@ class Simulation:
 
         return fig, ax
 
+    def profile_plot_at_header_condition(
+        self,
+        x: str | list,
+        y: str | list,
+        header_condition: str,
+        value: float | int,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        set_axes_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ):
+        """Plots profile composition at the model number where a profile header condition is closest to a value."""
+
+        model_number = self.get_model_number_at_profile_header_condition(
+            condition=header_condition,
+            value=value,
+        )
+
+        return self.profile_composition_plot(
+            x=x,
+            y=y,
+            model_number=model_number,
+            profile_number=-1,
+            function_x=function_x,
+            function_y=function_y,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            set_axes_labels=set_axes_labels,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
     # TODO: Add a profile sequence plot for different header conditions

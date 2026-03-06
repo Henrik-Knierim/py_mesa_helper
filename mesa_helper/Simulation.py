@@ -2038,7 +2038,7 @@ class Simulation:
         self,
         x: str | list,
         y: str | list,
-        header_condition: str,
+        condition: str,
         value: float | int,
         function_x: Callable | None = None,
         function_y: Callable | None = None,
@@ -2053,7 +2053,7 @@ class Simulation:
         """Plots profile composition at the model number where a profile header condition is closest to a value."""
 
         model_number = self.get_model_number_at_profile_header_condition(
-            condition=header_condition,
+            condition=condition,
             value=value,
         )
 
@@ -2073,4 +2073,55 @@ class Simulation:
             **kwargs,
         )
 
-    # TODO: Add a profile sequence plot for different header conditions
+    def profile_series_plot_at_header_condition(
+        self,
+        x: str | list,
+        y: str | list,
+        condition: str,
+        values: list[float] | list[int] | np.ndarray,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_labels: bool = False,
+        set_axes_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ) -> Tuple[plt.Figure, Axes]:
+        """Plots profile lines for a sequence of profile-header condition values."""
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for value in values:
+            model_number = self.get_model_number_at_profile_header_condition(
+                condition=condition, value=value
+            )
+
+            local_kwargs = dict(kwargs)
+            if set_labels:
+                label_value = (
+                    f"{value:.2e}"
+                    if isinstance(value, (int, float, np.number))
+                    else str(value)
+                )
+                local_kwargs["label"] = f"{condition}={label_value}"
+
+            self.profile_composition_plot(
+                x=x,
+                y=y,
+                model_number=model_number,
+                profile_number=-1,
+                function_x=function_x,
+                function_y=function_y,
+                fig=fig,
+                ax=ax,
+                set_label=False,
+                set_axes_labels=set_axes_labels,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **local_kwargs,
+            )
+
+        return fig, ax

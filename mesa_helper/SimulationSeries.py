@@ -60,10 +60,16 @@ class SimulationSeries:
         # then, initialize the mesa logs and histories
         self._init_Simulation()
 
-        self.n_simulations = len(self.simulations)
+        self._update_simulation_count()
 
         # add the simulation parameters to self.results
         self.results = pd.DataFrame({"log_dir": self.log_dirs})
+
+    def _update_simulation_count(self) -> None:
+        """Synchronizes simulation counters after mutating the series."""
+        self.n_simulations = len(self.log_dirs)
+        # Backward-compatible alias used in some client code.
+        self.n_sims = self.n_simulations
 
     # create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite
     def __str__(self):
@@ -197,6 +203,7 @@ class SimulationSeries:
         self.results = self.results[self.results["log_dir"] != log_dir]
         del self.simulations[log_dir]
         del self.log_dirs[self.log_dirs.index(log_dir)]
+        self._update_simulation_count()
 
     def apply_filter(
         self,

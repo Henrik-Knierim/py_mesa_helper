@@ -18,44 +18,33 @@ from mesa_helper.utils import single_data_mask, multiple_data_mask, extract_expr
 from functools import lru_cache
 
 
-# ? Should I have just one path as an input that leads directly to the simulation directory?
 class Simulation:
     """Class for anything related to a single simulation that has been run. For example, analyzing, plotting, saving, etc."""
 
     def __init__(
         self,
         simulation_dir: str,
-        parent_dir: str = "./LOGS",
         verbose: bool = False,
     ) -> None:
         """Initializes the Simulation object.
+
         Parameters
         ----------
-        parent_dir : str, optional
-            The parent directory of the simulation. The default is './LOGS'.
-        simulation_dir : str, optional
-            The simulation. The default is ''.
-        check_age_convergence : bool, optional
-            If True, then the simulations that do not converge to the final age are removed. The default is True.
-        **kwargs : dict
-            Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.
+        simulation_dir : str
+            Path to the simulation directory that contains the MESA LOGS output.
+        verbose : bool, optional
+            If True, print debug messages while processing simulation data.
         """
         # test that verbose is a boolean
         if not isinstance(verbose, bool):
             raise TypeError("verbose must be a boolean.")
         self.verbose = verbose
 
-        # parent directory of the simulation
-        if not isinstance(parent_dir, str):
-            raise TypeError("parent_dir must be a string.")
-        self.parent_dir = parent_dir
-
-        # test that simulation_dir is a string
+        # path to the simulation directory
         if not isinstance(simulation_dir, str):
             raise TypeError("simulation_dir must be a string.")
-        self.sim = simulation_dir
-
-        self.sim_dir = os.path.join(self.parent_dir, self.sim)
+        self.sim_dir = os.path.normpath(simulation_dir)
+        self.sim = os.path.basename(self.sim_dir) or self.sim_dir
 
         # then, initialize the mesa logs and histories
         self.log: mr.MesaLogDir = mr.MesaLogDir(self.sim_dir)

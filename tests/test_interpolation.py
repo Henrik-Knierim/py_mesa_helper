@@ -15,7 +15,10 @@ class TestInterpolation(unittest.TestCase):
         cls.tests_path = os.path.dirname(os.path.abspath(__file__))
 
     def setUp(self):
-        self.sim = Simulation(parent_dir=self.tests_path + "/LOGS", simulation_dir="test_planet_1", verbose=self.verbose)
+        self.sim = Simulation(
+            simulation_dir=os.path.join(self.tests_path, "LOGS", "test_planet_1"),
+            verbose=self.verbose,
+        )
 
     def test_interpolate_profile_data(self):
         """Test that interpolating profile data reproduces original profile points closely."""
@@ -32,8 +35,10 @@ class TestInterpolation(unittest.TestCase):
         y = profile.data(y_key)
 
         # build interpolation callable using the public wrapper
-        interp = self.sim.interpolate_profile_data(x=x_key, y=y_key, profile_number=profile_number)
-        
+        interp = self.sim.interpolate_profile_data(
+            x=x_key, y=y_key, profile_number=profile_number
+        )
+
         # evaluate interpolation at original x points
         y_interp = interp(x)
 
@@ -43,7 +48,6 @@ class TestInterpolation(unittest.TestCase):
         # assert median relative error is small
         # profile interpolation may introduce small relative differences depending on
         self.assertLess(np.median(rel_err), 1e-6)
-
 
     def test_interpolate_history_data(self):
         """Test that interpolating history data reproduces original history points closely."""

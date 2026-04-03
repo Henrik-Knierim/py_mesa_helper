@@ -24,7 +24,8 @@ class TestSimulation(unittest.TestCase):
         # Create the inlist instance that we want to change and compare
         self.path = "tests/LOGS"
         self.sim = Simulation(
-            parent_dir=self.path, simulation_dir="test_planet_1", verbose=self.verbose
+            simulation_dir=os.path.join(self.path, "test_planet_1"),
+            verbose=self.verbose,
         )
 
     def test_conservation_check(self):
@@ -96,9 +97,9 @@ class TestSimulation(unittest.TestCase):
         """Tests whether the profile header functions work."""
 
         # Test if the star_age of the reference profile is correct
-        self.sim._create_profile_header_df('star_age')
+        self.sim._create_profile_header_df("star_age")
         star_age_df = self.sim.profile_header_df
-        star_age = star_age_df['star_age'].values
+        star_age = star_age_df["star_age"].values
         star_age_comparison = np.array(
             [
                 1.11463044e02,
@@ -122,18 +123,24 @@ class TestSimulation(unittest.TestCase):
     def test_get_profile_data_at_header_condition(self):
         """Tests whether the get_profile_data_at_header_condition method works."""
         t = 1e3
-        zone = self.sim.get_profile_data_at_header_condition('zone','star_age', t)[-1]
+        zone = self.sim.get_profile_data_at_header_condition("zone", "star_age", t)[-1]
         zone_comparison = 489
         self.assertEqual(zone, zone_comparison)
 
-        logRho = self.sim.get_profile_data_at_header_condition('logRho','star_age', t)[0]
-        logRho_comparison = -6.4074845953528037E+000
+        logRho = self.sim.get_profile_data_at_header_condition("logRho", "star_age", t)[
+            0
+        ]
+        logRho_comparison = -6.4074845953528037e000
         self.assertEqual(logRho, logRho_comparison)
 
     def test_get_mean_profile_data_sequence(self):
         """Tests whether the get_mean_profile_data_sequence method works."""
-        entropy_profile = self.sim.get_mean_profile_data_sequence("entropy", profile_numbers = [1, -1])
-        entropy_model = self.sim.get_mean_profile_data_sequence("entropy", model_numbers = [1, -1])
+        entropy_profile = self.sim.get_mean_profile_data_sequence(
+            "entropy", profile_numbers=[1, -1]
+        )
+        entropy_model = self.sim.get_mean_profile_data_sequence(
+            "entropy", model_numbers=[1, -1]
+        )
 
         entropy_comparison = [10.977800300599148, 5.763208925874653]
 
@@ -142,27 +149,32 @@ class TestSimulation(unittest.TestCase):
 
     def test_export_history(self):
         """Tests whether the export_history method works."""
-        self.sim.export_history_data(columns = ['star_age', 'm_RCB', 's_env'], filename = 'tests/export_history.csv',)
+        self.sim.export_history_data(
+            columns=["star_age", "m_RCB", "s_env"],
+            filename="tests/export_history.csv",
+        )
 
         # read the exported file and the comparison and assess if they are equal
-        comparison = pd.read_csv('tests/export_history_comparison.csv')
-        exported = pd.read_csv('tests/export_history.csv')
+        comparison = pd.read_csv("tests/export_history_comparison.csv")
+        exported = pd.read_csv("tests/export_history.csv")
 
         # remove the exported file
-        os.remove('tests/export_history.csv')
+        os.remove("tests/export_history.csv")
 
         self.assertTrue(comparison.equals(exported))
 
     def test_export_profile(self):
         """Tests whether the export_profile method works."""
-        self.sim.export_profile_data(columns = ['zone', 'entropy'], filename = 'tests/export_profile.csv')
+        self.sim.export_profile_data(
+            columns=["zone", "entropy"], filename="tests/export_profile.csv"
+        )
 
         # read the exported file and the comparison and assess if they are equal
-        comparison = pd.read_csv('tests/export_profile_comparison.csv')
-        exported = pd.read_csv('tests/export_profile.csv')
+        comparison = pd.read_csv("tests/export_profile_comparison.csv")
+        exported = pd.read_csv("tests/export_profile.csv")
 
         # remove the exported file
-        os.remove('tests/export_profile.csv')
+        os.remove("tests/export_profile.csv")
 
         self.assertTrue(comparison.equals(exported))
 

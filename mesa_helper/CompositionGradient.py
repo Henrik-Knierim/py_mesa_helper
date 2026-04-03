@@ -11,8 +11,6 @@ from mesa_helper.astrophys import (
     X_Sol,
     Y_Sol,
     Z_Sol,
-    M_Earth_in_Jup,
-    M_Jup_in_Earth,
     X_el_basic,
 )
 
@@ -20,7 +18,11 @@ from mesa_helper.astrophys import (
 class CompositionGradient:
 
     def __init__(
-        self, gradient: str = "Z", M_p: float = 1.0, iso_net: str = "basic", verbose: bool = False
+        self,
+        gradient: str = "Z",
+        M_p: float = 1.0,
+        iso_net: str = "basic",
+        verbose: bool = False,
     ) -> None:
         """Creates a compositional gradient for a planet.
 
@@ -52,7 +54,7 @@ class CompositionGradient:
 
         self.iso_net = iso_net
 
-        if gradient in ['Y', 'Z', 'XZ']:
+        if gradient in ["Y", "Z", "XZ"]:
             self.gradient = gradient
         else:
             raise Exception(f"gradient={gradient} not supported.")
@@ -73,7 +75,7 @@ class CompositionGradient:
             self.scaled_abundances = self._scaled_abundances_Z
         elif self.gradient == "Y":
             self.scaled_abundances = self._scaled_abundances_H_He
-        elif self.gradient == 'XZ':
+        elif self.gradient == "XZ":
             self.scaled_abundances = self._scaled_abundances_XZ
         else:
             raise Exception(f"gradient={self.gradient} not supported.")
@@ -97,10 +99,12 @@ class CompositionGradient:
         return abu
 
     # scaled abundances for pure H-He
-    def _scaled_abundances_H_He(self, Y:float):
-        X = 1.0-Y
-        if self.iso_net == 'basic':
-            f = lambda el: X/X_Sol if el=="H" else (Y/Y_Sol if el in ["He3","He4"] else 0.) 
+    def _scaled_abundances_H_He(self, Y: float):
+        X = 1.0 - Y
+        if self.iso_net == "basic":
+            f = lambda el: (
+                X / X_Sol if el == "H" else (Y / Y_Sol if el in ["He3", "He4"] else 0.0)
+            )
             abu = {}
             abu.update((el, X_el * f(el)) for el, X_el in X_el_basic.items())
         elif self.iso_net == "planets":
@@ -110,19 +114,20 @@ class CompositionGradient:
         return abu
 
     # scaled abundances for H-Z
-    def _scaled_abundances_XZ(self, Z:float):
-        X = 1.0-Z
-        if self.iso_net == 'basic':
-            f = lambda el: X/X_Sol if el=="H" else (0. if el in ["He3","He4"] else Z/Z_Sol) 
+    def _scaled_abundances_XZ(self, Z: float):
+        X = 1.0 - Z
+        if self.iso_net == "basic":
+            f = lambda el: (
+                X / X_Sol if el == "H" else (0.0 if el in ["He3", "He4"] else Z / Z_Sol)
+            )
             abu = {}
-            abu.update((el,X_el*f(el)) for el, X_el in X_el_basic.items())
-        elif self.iso_net == 'planets':
-            abu = {"H":X, "He4":0., "O16":Z}
+            abu.update((el, X_el * f(el)) for el, X_el in X_el_basic.items())
+        elif self.iso_net == "planets":
+            abu = {"H": X, "He4": 0.0, "O16": Z}
         else:
             raise Exception(f"iso_net={self.iso_net} not supported.")
         return abu
 
-    
     # create file for relax_initial_composition
 
     def _mass_points(
@@ -194,10 +199,18 @@ class CompositionGradient:
             for l in comp_list:
                 str_version = [f"{el:.16e}" for el in l]
                 line = "  ".join(str_version) + "\n"
-                print(f"create_relax_initial_composition: line = {line}") if self.verbose else None
+                (
+                    print(f"create_relax_initial_composition: line = {line}")
+                    if self.verbose
+                    else None
+                )
                 file.write(line)
 
-        print(f"{relax_composition_filename} was created successfully.") if self.verbose else None
+        (
+            print(f"{relax_composition_filename} was created successfully.")
+            if self.verbose
+            else None
+        )
 
     # ----------------------------------------- #
     # -------- Composition Gradients ---------- #
@@ -247,7 +260,7 @@ class CompositionGradient:
             raise Exception("m_1 needs to be >= 0")
         elif any(n < 0 for n in m):
             raise Exception("m should contain positive numbers only")
-        
+
         # Convert m to a float array to ensure compatibility with np.piecewise
         m = np.asarray(m, dtype=float)
 
@@ -294,7 +307,7 @@ class CompositionGradient:
             raise Exception("Z_atm needs to be between 0 and 1")
         elif not 0 <= Z_0 <= 1:
             raise Exception("Z_atm needs to be between 0 and 1")
-        
+
         # Convert m to a float array to ensure compatibility with np.piecewise
         m = np.asarray(m, dtype=float)
 
@@ -310,7 +323,6 @@ class CompositionGradient:
     ) -> np.ndarray:
         """Returns an array of mass fractions for a linear compositional gradient with a fixed slope."""
 
-        M_z = M_z * M_Earth_in_Jup
         # tests
         if m_2 < m_1:
             raise Exception("m_2 must be larger than m_1")
@@ -322,7 +334,7 @@ class CompositionGradient:
             raise Exception("M_z needs to be >= 0")
         elif not 0 <= Z_atm <= 1:
             raise Exception("Z_atm needs to be between 0 and 1")
-        
+
         # Convert m to a float array to ensure compatibility with np.piecewise
         m = np.asarray(m, dtype=float)
 
@@ -428,7 +440,7 @@ class CompositionGradient:
         m : np.ndarray
             array of mass bins
         M_z : float
-            mass of the planet in Earth masses
+            mass of the planet
         Z_core : float
             heavy element mass fraction at the core
         Z_atm : float
@@ -454,16 +466,10 @@ class CompositionGradient:
             raise Exception("Z_atm needs to be between 0 and 1")
 
         # fix sigma such that the integral of the Gaussian to 3 sigma is equal to M_z
-        # additonally, use a conversion factor for M_z to convert it to Earth masses
 
         sigma = (2.0 * M_z) / (
-            6.0 * M_Jup_in_Earth * Z_atm
-            + (
-                M_Jup_in_Earth
-                * np.sqrt(2.0 * np.pi)
-                * erf(3.0 / np.sqrt(2.0))
-                * (Z_core - Z_atm)
-            )
+            6.0 * Z_atm
+            + (np.sqrt(2.0 * np.pi) * erf(3.0 / np.sqrt(2.0)) * (Z_core - Z_atm))
         )
 
         return Z_atm + (Z_core - Z_atm) * np.exp(-(m**2) / (2.0 * sigma**2))
@@ -486,7 +492,7 @@ class CompositionGradient:
         steepness : float
             steepness of the sigmoid slope. The larger the steeper. Default is 100.
         m_b : float
-            mass of the core in Earth mass. Defined as the midpoint of the sigmoid.
+            mass of the core. Defined as the midpoint of the sigmoid.
         Z_core : float
             metallicity of the core. Default is 1.
         Z_env : float
@@ -506,9 +512,7 @@ class CompositionGradient:
         elif not 0 <= Z_env <= 1:
             raise Exception("Z_env needs to be between 0 and 1")
 
-        m_core_M_Jup = m_b / M_Jup_in_Earth
-
-        return Z_core - (Z_core - Z_env) / (1 + np.exp(-steepness * (m - m_core_M_Jup)))
+        return Z_core - (Z_core - Z_env) / (1 + np.exp(-steepness * (m - m_b)))
 
     # TODO: This function is a special case of the piecewise_with_two_smoothed_exponential_transitions function.
     @staticmethod
@@ -629,7 +633,7 @@ class CompositionGradient:
             raise Exception("dm_cores should contain exactly three values")
         elif len(Z_values) != 3:
             raise Exception("Z_values should contain exactly three values")
-        
+
         # Convert m to a float array to ensure compatibility with np.piecewise
         m = np.asarray(m, dtype=float)
 
@@ -970,13 +974,13 @@ class CompositionGradient:
             )
 
         return c[-1]
-    
+
     @staticmethod
     def plot_relax_composition_file(
         file: str,
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
-        ):
+    ):
         """Plots the composition file."""
         if ax is None:
             fig, ax = plt.subplots()
@@ -991,11 +995,10 @@ class CompositionGradient:
         ax.legend()
 
         return fig, ax
-    
+
     @staticmethod
     def compute_heavy_metal_mass(file: str):
         """Computes the heavy metal mass from the composition file."""
         q, X, Y, Z = np.loadtxt(file, unpack=True, skiprows=1)
         m_over_M_p = 1.0 - q
         return np.trapz(Z[::-1], m_over_M_p[::-1])
-

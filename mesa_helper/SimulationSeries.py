@@ -4,6 +4,7 @@ from functools import lru_cache
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import os
+import shutil
 import numpy as np
 import pandas as pd
 from typing import Callable, Tuple
@@ -11,14 +12,13 @@ from mesa_helper.Simulation import Simulation
 from mesa_helper.utils import sort_list_by_variable
 
 
-# Todo: add a method to remove simulations from the class
 class SimulationSeries:
     """Class for anything related to a series of simulations after they finished. For example, analyzing, plotting, saving, etc."""
 
     def __init__(
         self,
-        series_dir: str,
-        delete_horribly_failed_simulations = False,
+        series_dir: str | None = None,
+        delete_horribly_failed_simulations=False,
         key_to_sort: str | None = None,
         **kwargs,
     ) -> None:
@@ -37,49 +37,113 @@ class SimulationSeries:
         self.verbose = kwargs.get("verbose", False)
 
         self.series_dir = series_dir
+        self.simulations = {}
+        self.log_dirs = []
 
-        # get the log directories while ignoring hidden directories
-        # TODO: Make this more robust
-        self.log_dirs = [
-            log_dir
-            for log_dir in os.listdir(self.series_dir)
-            if not log_dir.startswith(".")
-        ]
+        if self.series_dir is not None:
+            # get the log directories while ignoring hidden directories
+            # TODO: Make this more robust
+            self.log_dirs = [
+                log_dir
+                for log_dir in os.listdir(self.series_dir)
+                if not log_dir.startswith(".")
+            ]
 
-        # sort the log directories
-        self.log_dirs = sort_list_by_variable(self.log_dirs, key_to_sort)
+            # sort the log directories
+            self.log_dirs = sort_list_by_variable(self.log_dirs, key_to_sort)
 
-        # import sim results
-        # first, delete horribly failed simulations
-        (
-            self.delete_horribly_failed_simulations()
-            if delete_horribly_failed_simulations
-            else None
-        )
+            # import sim results
+            # first, delete horribly failed simulations
+            (
+                self.delete_horribly_failed_simulations()
+                if delete_horribly_failed_simulations
+                else None
+            )
 
-        # then, initialize the mesa logs and histories
-        self._init_Simulation()
+            # then, initialize the mesa logs and histories
+            self._init_Simulation()
 
-        self.n_simulations = len(self.simulations)
+        self._update_simulation_count()
 
         # add the simulation parameters to self.results
         self.results = pd.DataFrame({"log_dir": self.log_dirs})
 
+    def _update_simulation_count(self) -> None:
+        """Synchronizes simulation counters after mutating the series."""
+        self.n_simulations = len(self.log_dirs)
+        # Backward-compatible alias used in some client code.
+        self.n_sims = self.n_simulations
+
     # create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite
     def __str__(self):
-        return self.series_dir
+        return self.series_dir if self.series_dir is not None else "SimulationSeries"
 
     def _init_Simulation(self) -> None:
         """Initialzes `Simulation` objects for each log directory in the simulation."""
         self.simulations = {}
 
         for log_dir in self.log_dirs:
-            
-            if self.verbose:
-                print("_init_Simulation: parent_dir = ", self.series_dir)
-                print("_init_Simulation: simulation_dir = ", log_dir)
+            simulation_path = os.path.join(self.series_dir, log_dir)
 
-            self.simulations[log_dir] = Simulation(simulation_dir = log_dir, parent_dir=self.series_dir)
+            if self.verbose:
+                print("_init_Simulation: simulation_dir = ", simulation_path)
+
+            self.simulations[log_dir] = Simulation(simulation_dir=simulation_path)
+
+    def add_simulation(
+        self,
+        simulation_dir: str | list[str],
+        log_dir: str | list[str] | None = None,
+    ) -> None:
+        """Adds one or multiple simulations from full simulation directory paths."""
+
+        simulation_dirs = (
+            [simulation_dir] if isinstance(simulation_dir, str) else simulation_dir
+        )
+        if not isinstance(simulation_dirs, list) or not all(
+            isinstance(path, str) for path in simulation_dirs
+        ):
+            raise TypeError("simulation_dir must be a string or a list of strings.")
+
+        if log_dir is None:
+            log_dirs = [
+                os.path.basename(os.path.normpath(path)) for path in simulation_dirs
+            ]
+        elif isinstance(log_dir, str):
+            if len(simulation_dirs) != 1:
+                raise ValueError(
+                    "log_dir must be a list when adding multiple simulations."
+                )
+            log_dirs = [log_dir]
+        elif isinstance(log_dir, list):
+            if len(log_dir) != len(simulation_dirs):
+                raise ValueError(
+                    "log_dir list must have the same length as simulation_dir list."
+                )
+            if not all(isinstance(name, str) for name in log_dir):
+                raise TypeError("log_dir list must contain only strings.")
+            log_dirs = log_dir
+        else:
+            raise TypeError("log_dir must be a string, list of strings, or None.")
+
+        duplicate_existing = [name for name in log_dirs if name in self.simulations]
+        if duplicate_existing:
+            raise ValueError(
+                f"Simulation(s) already exist in the series: {duplicate_existing}."
+            )
+
+        duplicate_new = [name for name in set(log_dirs) if log_dirs.count(name) > 1]
+        if duplicate_new:
+            raise ValueError(f"Duplicate log_dir values provided: {duplicate_new}.")
+
+        for path, name in zip(simulation_dirs, log_dirs):
+            self.simulations[name] = Simulation(simulation_dir=path)
+            self.log_dirs.append(name)
+
+        self.results = pd.concat(
+            [self.results, pd.DataFrame({"log_dir": log_dirs})], ignore_index=True
+        )
+        self._update_simulation_count()
 
     @staticmethod
     def extract_value(string, free_param: str):
@@ -94,7 +158,7 @@ class SimulationSeries:
         # convert value either to a float or keep it as a string
         try:
             value = float(splitted_string[1].split("_")[1])
-        except:
+        except (ValueError, IndexError):
             value = splitted_string[1].split("_")[1:]
             # join the list of strings to a single string
             value = "_".join(value)
@@ -123,29 +187,43 @@ class SimulationSeries:
     @staticmethod
     def _is_profile_index_valid(path_to_profile_index):
         """Returns True if profiles.index contains more than 2 lines."""
-        
+
         if not os.path.exists(path_to_profile_index):
             print(f"Warning: {path_to_profile_index} does not exist.")
             return False
-        
+
         with open(path_to_profile_index, "r") as f:
             lines = f.readlines()
-            print(f"Number of lines in {path_to_profile_index}: {len(lines)}") if len(lines) <= 2 else None
+            (
+                print(f"Number of lines in {path_to_profile_index}: {len(lines)}")
+                if len(lines) <= 2
+                else None
+            )
         return len(lines) > 2
 
     def delete_horribly_failed_simulations(self):
         """Deletes all simulations that have a profiles.index file with less than 2 lines."""
 
-        for log_dir in self.log_dirs:
+        if self.series_dir is None:
+            raise ValueError("series_dir is None; there are no simulations to delete.")
+
+        for log_dir in list(self.log_dirs):
             path_to_profile_index = os.path.join(
                 self.series_dir, log_dir, "profiles.index"
             )
             if not self._is_profile_index_valid(path_to_profile_index):
                 print(f"Deleting {log_dir}.") if self.verbose else None
-                os.system(f"rm -r {os.path.join(self.series_dir, log_dir)}")
-                self.log_dirs.remove(log_dir)
+                shutil.rmtree(os.path.join(self.series_dir, log_dir))
+                # safe removal while iterating over copy
+                if log_dir in self.log_dirs:
+                    self.log_dirs.remove(log_dir)
 
-    def remove_non_converged_simulations(self, keys: str | list[str], filter: Callable | list[Callable], function: Callable | None = None):
+    def remove_non_converged_simulations(
+        self,
+        keys: str | list[str],
+        filter: Callable | list[Callable],
+        function: Callable | None = None,
+    ):
         """Removes all simulations that are not converged.
         Parameters
         ----------
@@ -157,19 +235,52 @@ class SimulationSeries:
             A function that filters the keys. If a list, then the function must take as many inputs as there are keys. The default is None.
         """
 
-        for log_dir in self.log_dirs:
-            sim = self.simulations[log_dir]
-            is_converged: bool = sim.is_converged(keys=keys, function=function, filter=filter)
+        to_remove: list[str] = []
+
+        # iterate over a snapshot, not the mutable list
+        for log_dir in list(self.log_dirs):
+            sim = self.simulations.get(log_dir)
+            if sim is None:
+                continue
+
+            is_converged: bool = sim.is_converged(
+                keys=keys, function=function, filter=filter
+            )
             if not is_converged:
-                print(f"Removing {log_dir} from the SimulationSeries.") if self.verbose else None
-                self.remove(log_dir)
+                (
+                    print(f"Removing {log_dir} from the SimulationSeries.")
+                    if self.verbose
+                    else None
+                )
+                to_remove.append(log_dir)
 
-    def remove(self, log_dir):
-        """Removes the simulation with `log_dir` from the SimulationSeries."""
+        for log_dir in to_remove:
+            if log_dir in self.simulations:
+                self.remove_simulation(log_dir)
 
-        self.results = self.results[self.results["log_dir"] != log_dir]
-        del self.simulations[log_dir]
-        del self.log_dirs[self.log_dirs.index(log_dir)]
+    def remove_simulation(self, log_dir: str | list[str]) -> None:
+        """Removes one or multiple simulations from the SimulationSeries."""
+
+        log_dirs = [log_dir] if isinstance(log_dir, str) else log_dir
+        if not isinstance(log_dirs, list) or not all(
+            isinstance(name, str) for name in log_dirs
+        ):
+            raise TypeError("log_dir must be a string or a list of strings.")
+
+        missing = [name for name in log_dirs if name not in self.simulations]
+        if missing:
+            raise KeyError(f"Simulation(s) not in the series: {missing}.")
+
+        self.results = self.results[~self.results["log_dir"].isin(log_dirs)]
+        for name in log_dirs:
+            del self.simulations[name]
+            self.log_dirs.remove(name)
+
+        self._update_simulation_count()
+
+    def remove(self, log_dir: str | list[str]) -> None:
+        """Backward-compatible alias for remove_simulation."""
+        self.remove_simulation(log_dir)
 
     def apply_filter(
         self,
@@ -180,7 +291,9 @@ class SimulationSeries:
     ) -> None:
         """Filters the SimulationSeries based on a condition."""
 
-        for log_dir in self.log_dirs:
+        to_remove: list[str] = []
+
+        for log_dir in list(self.log_dirs):
             sim = self.simulations[log_dir]
             fulfils_criterion: bool = sim.check_value(
                 quantity, value, model_number, relative_tolerance
@@ -192,7 +305,10 @@ class SimulationSeries:
                     if self.verbose
                     else None
                 )
-                self.remove(log_dir)
+                to_remove.append(log_dir)
+
+        if to_remove:
+            self.remove_simulation(to_remove)
 
     # ------------------------------ #
     # ----- Simulation Results ----- #
@@ -209,7 +325,7 @@ class SimulationSeries:
         history_keys: str | list[str],
         condition: str = "model_number",
         value: int | float = -1,
-        key_names: str | list[str] | None = None
+        key_names: str | list[str] | None = None,
     ) -> None:
         """Adds `history_keys` to `self.results`.
 
@@ -234,22 +350,30 @@ class SimulationSeries:
             key_names = [key_names]
         elif len(key_names) != len(history_keys):
             raise ValueError("key_names must have the same length as history_keys.")
-        
-        # remove the history key if it is already in the results
-        # also remove the key name if it is already in the results
-        for key_name, history_key in zip(key_names, history_keys):
-            if key_name in self.results.columns:
-                history_keys.remove(history_key)
-                key_names.remove(key_name)
 
-        print("history_keys = ", history_keys) if self.verbose else None
+        requested_pairs = list(zip(history_keys, key_names))
+        pending_pairs = [
+            (history_key, key_name)
+            for history_key, key_name in requested_pairs
+            if key_name not in self.results.columns
+        ]
 
-        # TODO: There is a bug here that only the last entry in the history_keys is added to the results
-        for history_key in history_keys:
-            [
-                self.simulations[log_dir].add_history_data(history_key, condition, value, key_name)
-                for log_dir in self.log_dirs
-            ]
+        if not pending_pairs:
+            return
+
+        (
+            print("history_keys = ", [pair[0] for pair in pending_pairs])
+            if self.verbose
+            else None
+        )
+
+        for history_key, key_name in pending_pairs:
+            for log_dir in self.log_dirs:
+                self.simulations[log_dir].add_history_data(
+                    history_key, condition, value, key_name
+                )
+
+        if self.log_dirs:
             dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
             filtered_dfs = [
                 df[
@@ -281,7 +405,11 @@ class SimulationSeries:
     ):
         """Computes the integrated quantity from q0 to q1 and adds it to `self.results`."""
         if name is None:
-            name = kind + "_" + keys if isinstance(keys, str) else kind + "_" + "_".join(keys)
+            name = (
+                kind + "_" + keys
+                if isinstance(keys, str)
+                else kind + "_" + "_".join(keys)
+            )
 
         [
             self.simulations[log_dir].add_profile_data(
@@ -312,7 +440,7 @@ class SimulationSeries:
             for df in dfs
         ]
         self.merge_results(filtered_dfs)
-        
+
     # TODO: Adjust to new method in Simulation
     def add_profile_data_at_condition(
         self,
@@ -467,7 +595,9 @@ class SimulationSeries:
 
         for sim in self.simulations.values():
             filename = file_labeling(sim.sim) + ".csv"
-            sim.export_history_data(columns=columns, filename=filename, filters = filters, **kwargs)
+            sim.export_history_data(
+                columns=columns, filename=filename, filters=filters, **kwargs
+            )
 
     def export_profile_data(
         self,
@@ -511,8 +641,8 @@ class SimulationSeries:
                 model_number=model_number,
                 profile_number=profile_number,
                 condition=condition,
-                value = value,
-                **kwargs
+                value=value,
+                **kwargs,
             )
 
     # ------------------------------ #
@@ -528,7 +658,7 @@ class SimulationSeries:
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
         set_label: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Tuple[plt.Figure, Axes]:
         """Plots the profile data with (x, y) as the axes.
 
@@ -556,7 +686,7 @@ class SimulationSeries:
         """
         if ax is None:
             fig, ax = plt.subplots()
-    
+
         for log_key, sim in self.simulations.items():
             sim.profile_plot(
                 x,
@@ -571,18 +701,28 @@ class SimulationSeries:
 
         return fig, ax
 
-    def history_plot(self, x: str, y: str, fig: plt.Figure | None = None, ax: Axes | None = None, set_label: bool = False, filter_x: Callable | None = None, filter_y: Callable | None = None, **kwargs):
+    def history_plot(
+        self,
+        x: str,
+        y: str,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        filter_x: Callable | None = None,
+        filter_y: Callable | None = None,
+        **kwargs,
+    ):
         """Plots the history data with (x, y) as the axes.
-        
+
         Parameters
         ----------
         x : str
             The x-axis of the history data.
-  
+
         y : str
             The y-axis of the history data.
 
-        fig : plt.Figure, optional  
+        fig : plt.Figure, optional
             The figure. The default is None.
 
         ax : Axes, optional
@@ -593,7 +733,7 @@ class SimulationSeries:
 
         filter_x : Callable | None, optional
             A function that filters the x-values. The default is None.
-        
+
         filter_y : Callable | None, optional
             A function that filters the y-values. The default is None.
 
@@ -610,10 +750,19 @@ class SimulationSeries:
             fig, ax = plt.subplots()
 
         for log_key, sim in self.simulations.items():
-            sim.history_plot(x, y, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y=filter_y, **kwargs)
+            sim.history_plot(
+                x,
+                y,
+                fig=fig,
+                ax=ax,
+                set_label=set_label,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **kwargs,
+            )
 
         return fig, ax
-    
+
     def history_composition_plot(
         self,
         x: str | list,
@@ -670,8 +819,20 @@ class SimulationSeries:
             )
 
         return fig, ax
-    
-    def history_ratio_plot(self, x: str, y_numerator: str, y_denominator: str, fig: plt.Figure | None = None, ax: Axes | None = None, set_label: bool = False, filter_x: Callable | None = None, filter_y_numerator: Callable | None = None, filter_y_denominator: Callable | None = None, **kwargs):
+
+    def history_ratio_plot(
+        self,
+        x: str,
+        y_numerator: str,
+        y_denominator: str,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        filter_x: Callable | None = None,
+        filter_y_numerator: Callable | None = None,
+        filter_y_denominator: Callable | None = None,
+        **kwargs,
+    ):
         """Plots y_numerator / y_denominator as a function of x for the history data.
 
         Parameters
@@ -700,10 +861,21 @@ class SimulationSeries:
             fig, ax = plt.subplots()
 
         for sim in self.simulations.values():
-            sim.history_ratio_plot(x, y_numerator, y_denominator, fig=fig, ax=ax, set_label=set_label, filter_x=filter_x, filter_y_numerator=filter_y_numerator, filter_y_denominator=filter_y_denominator, **kwargs)
+            sim.history_ratio_plot(
+                x,
+                y_numerator,
+                y_denominator,
+                fig=fig,
+                ax=ax,
+                set_label=set_label,
+                filter_x=filter_x,
+                filter_y_numerator=filter_y_numerator,
+                filter_y_denominator=filter_y_denominator,
+                **kwargs,
+            )
 
         return fig, ax
-    
+
     def profile_composition_plot(
         self,
         x: str | list,
@@ -756,18 +928,18 @@ class SimulationSeries:
 
         for sim in self.simulations.values():
             sim.profile_composition_plot(
-                x = x,
-                y = y,
-                model_number = model_number,
-                profile_number = profile_number,
-                function_x = function_x,
-                function_y = function_y,
-                fig = fig,
-                ax = ax,
-                set_label = set_label,
-                set_axes_labels = set_axes_labels,
-                filter_x = filter_x,
-                filter_y = filter_y,
+                x=x,
+                y=y,
+                model_number=model_number,
+                profile_number=profile_number,
+                function_x=function_x,
+                function_y=function_y,
+                fig=fig,
+                ax=ax,
+                set_label=set_label,
+                set_axes_labels=set_axes_labels,
+                filter_x=filter_x,
+                filter_y=filter_y,
                 **kwargs,
             )
 
@@ -785,7 +957,7 @@ class SimulationSeries:
         model_number_compare: int = -1,
         fig: plt.Figure | None = None,
         ax: Axes | None = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[plt.Figure, Axes]:
         """Plots the relative difference of two simulations at the same profile number.
 
@@ -829,17 +1001,16 @@ class SimulationSeries:
             profile_number_compare,
             model_number_reference,
             model_number_compare,
-            **kwargs
-            )
+            **kwargs,
+        )
 
         ax.plot(x_data, y_data, **kwargs)
         ax.set_xlabel(x)
-        ax.set_ylabel(f'Relative Difference of {y}')
+        ax.set_ylabel(f"Relative Difference of {y}")
 
         return fig, ax
 
-
-    # Todo: update to new method in Simulation
+    # TODO: update to new method in Simulation
     def mean_profile_sequence_plot(
         self,
         x: str,
@@ -850,7 +1021,7 @@ class SimulationSeries:
         ax: Axes | None = None,
         model_numbers: list[int] | np.ndarray | None = None,
         profile_numbers: list[int] | np.ndarray | None = None,
-        **kwargs
+        **kwargs,
     ):
         """Plots a sequence of mean profile values with (x, y) as the axes."""
 
@@ -858,6 +1029,16 @@ class SimulationSeries:
             fig, ax = plt.subplots()
 
         for log_key, sim in self.simulations.items():
-            sim.mean_profile_sequence_plot(x, y, q0, q1, fig=fig, ax=ax, model_numbers=model_numbers, profile_numbers=profile_numbers, **kwargs)
-        
+            sim.mean_profile_sequence_plot(
+                x,
+                y,
+                q0,
+                q1,
+                fig=fig,
+                ax=ax,
+                model_numbers=model_numbers,
+                profile_numbers=profile_numbers,
+                **kwargs,
+            )
+
         return fig, ax

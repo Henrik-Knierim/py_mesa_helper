@@ -11,3 +11,7 @@ python setup.py install
 
 ## Usage
 For a quickstarter guide, check out the `examples.ipynb` notebook. A more detailed documentation will follow soon.
+
+## Packaging Notes
+- The repository keeps `tests/` for development and validation.
+- Release artifacts (source distribution) exclude `tests/` to keep the install footprint small.

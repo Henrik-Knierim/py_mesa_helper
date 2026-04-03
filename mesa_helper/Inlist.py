@@ -67,7 +67,9 @@ class Inlist:
         else:
             self.mesa_options_path = path
 
-    def _is_option(self, section: str, option: str, mesa_option_dir: str | None = None) -> bool:
+    def _is_option(
+        self, section: str, option: str, mesa_option_dir: str | None = None
+    ) -> bool:
         """Checks if `option` is in `section` of `MESA`.
 
         Parameters
@@ -79,8 +81,10 @@ class Inlist:
 
         """
 
-        mesa_option_dir = self.mesa_options_path if mesa_option_dir is None else mesa_option_dir
-        
+        mesa_option_dir = (
+            self.mesa_options_path if mesa_option_dir is None else mesa_option_dir
+        )
+
         src = os.path.join(mesa_option_dir, f"{section}.defaults")
 
         with open(src, "r") as file:
@@ -106,9 +110,17 @@ class Inlist:
             return "&star_job"
         elif self._is_option("pgstar", option):
             return "&pgstar"
-        elif self._is_option("eos", option, mesa_option_dir = os.path.join(self.mesa_path, "eos", "defaults")):
+        elif self._is_option(
+            "eos",
+            option,
+            mesa_option_dir=os.path.join(self.mesa_path, "eos", "defaults"),
+        ):
             return "&eos"
-        elif self._is_option("kap", option, mesa_option_dir = os.path.join(self.mesa_path, "kap", "defaults")):
+        elif self._is_option(
+            "kap",
+            option,
+            mesa_option_dir=os.path.join(self.mesa_path, "kap", "defaults"),
+        ):
             return "&kap"
         else:
             raise ValueError(f"Option {option} not found.")
@@ -154,6 +166,8 @@ class Inlist:
         """
         print(f"\nEnter _change_lines") if self.verbose else None
         separator: str = "="
+        index_option: int | None = None
+        new_line: str | None = None
 
         with open(self.name, "r") as file:
 
@@ -164,7 +178,11 @@ class Inlist:
 
             for i, l in enumerate(lines):
                 if option in l:
-                    print(f"\tFound option {option} in line {i}") if self.verbose else None
+                    (
+                        print(f"\tFound option {option} in line {i}")
+                        if self.verbose
+                        else None
+                    )
                     # test if this is in fact the right option
 
                     # for ignoring fortran comments after the value
@@ -178,16 +196,17 @@ class Inlist:
                     print(f"\tIs option: {is_option}") if self.verbose else None
 
                     if is_option:
-                        index_option: int = i
+                        index_option = i
 
                         # fortran formatting
                         out: str = Inlist._fortran_format(value)
 
-                        new_line: str = (
-                            line_splitted[0] + " " + separator + " " + out + "\n"
-                        )
+                        new_line = line_splitted[0] + " " + separator + " " + out + "\n"
 
                         break
+
+            if index_option is None or new_line is None:
+                raise KeyError(f"Option {option} not found in {self.name}.")
 
             lines[index_option] = new_line
 
@@ -243,7 +262,7 @@ class Inlist:
         try:
             print(f"\tTry to change lines") if self.verbose else None
             lines = self._change_lines(option, value)
-        except:
+        except KeyError:
             print(f"\tCreate lines") if self.verbose else None
             lines = self._create_lines(option, value)
 
@@ -252,7 +271,11 @@ class Inlist:
         with open(self.name, "w") as file:
             file.writelines(lines)
 
-        print(f"\tSet {option} to {Inlist._fortran_format(value)}\n") if self.verbose else None
+        (
+            print(f"\tSet {option} to {Inlist._fortran_format(value)}\n")
+            if self.verbose
+            else None
+        )
 
     def set_multiple_options(self, **options: OptionType) -> None:
         """Sets multiple options in an inlist file.
@@ -316,7 +339,9 @@ class Inlist:
         self.set_option("radius_in_cm_for_create_initial_model", R_p_in_cm)
 
     # Todo: test this function
-    def set_initial_abundances(self, gradient: str, value: float, scaling: Callable | None = None) -> None:
+    def set_initial_abundances(
+        self, gradient: str, value: float, scaling: Callable | None = None
+    ) -> None:
 
         # check if gradient is 'Y' or 'Z'
         validate_option(gradient, ["Y", "Z"])
@@ -325,20 +350,19 @@ class Inlist:
             scaling = lambda Z: scaled_solar_ratio_mass_fractions(Z=value)
 
         elif scaling is None and gradient == "Y":
-            scaling = lambda Y: (1-Y, Y, 0.0)
+            scaling = lambda Y: (1 - Y, Y, 0.0)
 
         elif scaling is None:
             # something went wrong
             raise ValueError("scaling must be given if gradient is not 'Y' or 'Z'.")
-            
+
         X, Y, Z = scaling(value)
 
         self.set_option("initial_z", Y)
         self.set_option("initial_y", Z)
 
-
     @staticmethod
-    def _fortran_float(value: float|np.floating)-> str:
+    def _fortran_float(value: float | np.floating) -> str:
         # Check if the number is zero float
         if value == 0.0:
             prefactor: float | np.floating = 0.0
@@ -355,7 +379,7 @@ class Inlist:
             prefactor = int(prefactor)
 
         return f"{sign*prefactor:.6g}d{exponent}"
-    
+
     @staticmethod
     def _fortran_format(x: float | bool | str | int | np.floating) -> str:
         """Converts a python input to a fortran output (as str)."""
@@ -378,10 +402,10 @@ class Inlist:
         """Converts a fortran input string to a python output."""
         try:
             return int(x)
-        except:
+        except ValueError:
             try:
                 return float(x.replace("d", "e"))
-            except:
+            except ValueError:
                 # check if bool
                 if x == ".true.":
                     return True
@@ -529,17 +553,17 @@ class Inlist:
         test
 
         >>> # Example 2: directory_style is 'id'
-        >>> directory = Inlist._create_directory_name_from_style(folder_style='id', inlist_name='inlist', option='initial_mass')
+        >>> directory = Inlist._create_directory_name_from_style(directory_style='id', inlist_name='inlist', option='initial_mass')
         >>> print(directory)
         1
 
         >>> # Example 3: directory_style is str
-        >>> directory = Inlist._create_directory_name_from_style(folder_style='initial_mass', initial_mass=1.0)
+        >>> directory = Inlist._create_directory_name_from_style(directory_style='initial_mass', initial_mass=1.0)
         >>> print(directory)
         initial_mass_1.0
 
         >>> # Example 4: directory_style is list
-        >>> directory = Inlist._create_directory_name_from_style(folder_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
+        >>> directory = Inlist._create_directory_name_from_style(directory_style=['initial_mass', 'metallicity'], initial_mass=1.0, metallicity=0.02)
         >>> print(directory)
         initial_mass_1.0_metallicity_0.02
         """
@@ -722,9 +746,9 @@ class Inlist:
     @staticmethod
     def create_model_filename(**kwargs) -> str:
         """Creates a model filename using the functionality from `create_logs_path`."""
-        
+
         mod_parent_dir = kwargs.get("parent_dir", "")
-        mod_file  = Inlist.create_logs_path(logs_parent_dir = mod_parent_dir, **kwargs)
+        mod_file = Inlist.create_logs_path(logs_parent_dir=mod_parent_dir, **kwargs)
         mod_file += ".mod"
 
         return mod_file
@@ -814,9 +838,11 @@ class Inlist:
 
         # if s_of_m_kerg is a number, create a homogeneous entropy profile
         if isinstance(s_of_m_kerg, (float, int, np.floating, np.integer)):
-            Inlist.create_relax_entropy_file_homogeneous(s_of_m_kerg, relax_entropy_filename)
+            Inlist.create_relax_entropy_file_homogeneous(
+                s_of_m_kerg, relax_entropy_filename
+            )
             return
-        
+
         # tests
         if not callable(s_of_m_kerg):
             raise TypeError("s_of_m_kerg must be a function.")

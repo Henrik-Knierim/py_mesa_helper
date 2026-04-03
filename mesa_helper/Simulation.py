@@ -18,44 +18,33 @@ from mesa_helper.utils import single_data_mask, multiple_data_mask, extract_expr
 from functools import lru_cache
 
 
-# ? Should I have just one path as an input that leads directly to the simulation directory?
 class Simulation:
     """Class for anything related to a single simulation that has been run. For example, analyzing, plotting, saving, etc."""
 
     def __init__(
         self,
         simulation_dir: str,
-        parent_dir: str = "./LOGS",
         verbose: bool = False,
     ) -> None:
         """Initializes the Simulation object.
+
         Parameters
         ----------
-        parent_dir : str, optional
-            The parent directory of the simulation. The default is './LOGS'.
-        simulation_dir : str, optional
-            The simulation. The default is ''.
-        check_age_convergence : bool, optional
-            If True, then the simulations that do not converge to the final age are removed. The default is True.
-        **kwargs : dict
-            Keyword arguments for `self.remove_non_converged_simulations`. For example, `final_age` can be specified.
+        simulation_dir : str
+            Path to the simulation directory that contains the MESA LOGS output.
+        verbose : bool, optional
+            If True, print debug messages while processing simulation data.
         """
         # test that verbose is a boolean
         if not isinstance(verbose, bool):
             raise TypeError("verbose must be a boolean.")
         self.verbose = verbose
 
-        # parent directory of the simulation
-        if not isinstance(parent_dir, str):
-            raise TypeError("parent_dir must be a string.")
-        self.parent_dir = parent_dir
-
-        # test that simulation_dir is a string
+        # path to the simulation directory
         if not isinstance(simulation_dir, str):
             raise TypeError("simulation_dir must be a string.")
-        self.sim = simulation_dir
-
-        self.sim_dir = os.path.join(self.parent_dir, self.sim)
+        self.sim_dir = os.path.normpath(simulation_dir)
+        self.sim = os.path.basename(self.sim_dir) or self.sim_dir
 
         # then, initialize the mesa logs and histories
         self.log: mr.MesaLogDir = mr.MesaLogDir(self.sim_dir)
@@ -85,7 +74,7 @@ class Simulation:
         # convert value either to a float or keep it as a string
         try:
             value = float(splitted_string[1].split("_")[1])
-        except:
+        except (ValueError, IndexError):
             value = splitted_string[1].split("_")[1:]
             # join the list of strings to a single string
             value = "_".join(value)
@@ -180,13 +169,81 @@ class Simulation:
         )
 
         return np.abs(quantity_value - value) / value < relative_tolerance
-    
-    def is_converged(self, keys: str | list[str], function: Callable | None = None, filter: Callable | list[Callable] | None = None) -> bool:
+
+    def check_if_greater_than(
+        self,
+        quantity: str,
+        value: float,
+        model_number: int = -1,
+    ) -> bool:
+        """Checks if the quantity is greater than a certain value to a certain tolerance.
+
+        Parameters
+        ----------
+        quantity : str
+            quantity to check
+        value : float
+            value to compare to
+        model_number : int, optional
+            model number at which to evaluate the quantity, by default -1
+        relative_tolerance : float, optional
+            tolerance below which a quantitiy is considered to be conserved, by default 1e-3
+
+        Returns
+        -------
+        bool
+            True if the quantity is conserved to the given tolerance
+        """
+
+        if model_number < 0:
+            model_number = self.history.model_number[model_number]
+
+        quantity_value: np.floating | np.integer = self.history.data_at_model_number(
+            quantity, model_number
+        )
+
+        return quantity_value > value
+
+    def check_if_less_than(
+        self,
+        quantity: str,
+        value: float,
+        model_number: int = -1,
+    ) -> bool:
+        """Checks if the quantity is less than a certain value to a certain tolerance.
+
+        Parameters
+        ----------
+        quantity : str
+            quantity to check
+        value : float
+            value to compare to
+        model_number : int, optional
+            model number at which to evaluate the quantity, by default -1
+
+        Returns
+        -------
+        bool
+            True if the quantity is conserved to the given tolerance
+        """
+
+        if model_number < 0:
+            model_number = self.history.model_number[model_number]
+
+        quantity_value: np.floating | np.integer = self.history.data_at_model_number(
+            quantity, model_number
+        )
+
+        return quantity_value < value
+
+    def is_converged(
+        self,
+        keys: str | list[str],
+        function: Callable | None = None,
+        filter: Callable | list[Callable] | None = None,
+    ) -> bool:
         data, mask = self._composite_data(
-            keys = keys,
-            function = function,
-            filter = filter,
-            kind = "history"
+            keys=keys, function=function, filter=filter, kind="history"
         )
         return any(data[mask])
 
@@ -680,11 +737,10 @@ class Simulation:
         """Returns the quantity in a DataFrame where condition is closest to value."""
         return df.iloc[(df[condition] - value).abs().argsort()[:1]][quantity].values[0]
 
-    @lru_cache
-    def get_profile_at_header_condition(
+    def get_model_number_at_profile_header_condition(
         self, condition: str, value: float | int, **kwargs
-    ) -> mr.MesaData:
-        """Returns the profile data for `quantity` where the profile header `condition` is closest to `value`."""
+    ) -> int:
+        """Returns the model number where the profile header `condition` is closest to `value`."""
 
         # check if the profile header values exist in `self.profile_header_df`
         # if not, then create it
@@ -698,6 +754,15 @@ class Simulation:
             self.profile_header_df, "model_number", condition, value
         )
 
+        return model_number
+
+    def get_profile_at_header_condition(
+        self, condition: str, value: float | int, **kwargs
+    ) -> mr.MesaData:
+        """Returns the profile data for `quantity` where the profile header `condition` is closest to `value`."""
+        model_number = self.get_model_number_at_profile_header_condition(
+            condition, value, **kwargs
+        )
         return self.log.profile_data(model_number=model_number, **kwargs)
 
     def get_profile_data_at_header_condition(
@@ -893,14 +958,21 @@ class Simulation:
 
         mask = mask_x & mask_y
 
-        return lambda x: np.interp(x, data_x[mask][::-1], data_y[mask][::-1], **kwargs)
+        data_x = data_x[mask]
+        data_y = data_y[mask]
 
-    @lru_cache
+        # Check if x data is decreasing, and if so, reverse both arrays
+        if len(data_x) > 1 and data_x[0] > data_x[-1]:
+            data_x = data_x[::-1]
+            data_y = data_y[::-1]
+
+        return lambda x: np.interp(x, data_x, data_y, **kwargs)
+
     def interpolate_profile_data(
         self,
         x: str,
         y: str,
-        model_number: int  = -1,
+        model_number: int = -1,
         profile_number: int = -1,
         function_x: Callable | None = None,
         function_y: Callable | None = None,
@@ -951,7 +1023,6 @@ class Simulation:
 
         return f
 
-    @lru_cache
     def interpolate_history_data(
         self,
         x: str,
@@ -1087,12 +1158,14 @@ class Simulation:
         functions = [None] * len(columns) if functions is None else functions
 
         for column, function, filter in zip(columns, functions, filters):
-            data[column], masks[column] = self._composite_data(keys = column, function=function, filter = filter, kind = 'history')
+            data[column], masks[column] = self._composite_data(
+                keys=column, function=function, filter=filter, kind="history"
+            )
 
-        mask = np.all(list(masks.values()), axis = 0)
+        mask = np.all(list(masks.values()), axis=0)
         data = {column: data[column][mask] for column in columns}
         df = pd.DataFrame(data)
-    
+
         # add index = False to kwargs if not specified
         if kwargs.get("index") is None:
             kwargs["index"] = False
@@ -1950,4 +2023,94 @@ class Simulation:
 
         return fig, ax
 
-    # TODO: Add a profile sequence plot for different header conditions
+    def profile_plot_at_header_condition(
+        self,
+        x: str | list,
+        y: str | list,
+        condition: str,
+        value: float | int,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_label: bool = False,
+        set_axes_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ):
+        """Plots profile composition at the model number where a profile header condition is closest to a value."""
+
+        model_number = self.get_model_number_at_profile_header_condition(
+            condition=condition,
+            value=value,
+        )
+
+        return self.profile_composition_plot(
+            x=x,
+            y=y,
+            model_number=model_number,
+            profile_number=-1,
+            function_x=function_x,
+            function_y=function_y,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            set_axes_labels=set_axes_labels,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
+    def profile_series_plot_at_header_condition(
+        self,
+        x: str | list,
+        y: str | list,
+        condition: str,
+        values: list[float] | list[int] | np.ndarray,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        set_labels: bool = False,
+        set_axes_labels: bool = False,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ) -> Tuple[plt.Figure, Axes]:
+        """Plots profile lines for a sequence of profile-header condition values."""
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for value in values:
+            model_number = self.get_model_number_at_profile_header_condition(
+                condition=condition, value=value
+            )
+
+            local_kwargs = dict(kwargs)
+            if set_labels:
+                label_value = (
+                    f"{value:.2e}"
+                    if isinstance(value, (int, float, np.number))
+                    else str(value)
+                )
+                local_kwargs["label"] = f"{condition}={label_value}"
+
+            self.profile_composition_plot(
+                x=x,
+                y=y,
+                model_number=model_number,
+                profile_number=-1,
+                function_x=function_x,
+                function_y=function_y,
+                fig=fig,
+                ax=ax,
+                set_label=False,
+                set_axes_labels=set_axes_labels,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **local_kwargs,
+            )
+
+        return fig, ax

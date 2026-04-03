@@ -11,13 +11,12 @@ from mesa_helper.Simulation import Simulation
 from mesa_helper.utils import sort_list_by_variable
 
 
-# Todo: add a method to remove simulations from the class
 class SimulationSeries:
     """Class for anything related to a series of simulations after they finished. For example, analyzing, plotting, saving, etc."""
 
     def __init__(
         self,
-        series_dir: str,
+        series_dir: str | None = None,
         delete_horribly_failed_simulations=False,
         key_to_sort: str | None = None,
         **kwargs,
@@ -37,28 +36,31 @@ class SimulationSeries:
         self.verbose = kwargs.get("verbose", False)
 
         self.series_dir = series_dir
+        self.simulations = {}
+        self.log_dirs = []
 
-        # get the log directories while ignoring hidden directories
-        # TODO: Make this more robust
-        self.log_dirs = [
-            log_dir
-            for log_dir in os.listdir(self.series_dir)
-            if not log_dir.startswith(".")
-        ]
+        if self.series_dir is not None:
+            # get the log directories while ignoring hidden directories
+            # TODO: Make this more robust
+            self.log_dirs = [
+                log_dir
+                for log_dir in os.listdir(self.series_dir)
+                if not log_dir.startswith(".")
+            ]
 
-        # sort the log directories
-        self.log_dirs = sort_list_by_variable(self.log_dirs, key_to_sort)
+            # sort the log directories
+            self.log_dirs = sort_list_by_variable(self.log_dirs, key_to_sort)
 
-        # import sim results
-        # first, delete horribly failed simulations
-        (
-            self.delete_horribly_failed_simulations()
-            if delete_horribly_failed_simulations
-            else None
-        )
+            # import sim results
+            # first, delete horribly failed simulations
+            (
+                self.delete_horribly_failed_simulations()
+                if delete_horribly_failed_simulations
+                else None
+            )
 
-        # then, initialize the mesa logs and histories
-        self._init_Simulation()
+            # then, initialize the mesa logs and histories
+            self._init_Simulation()
 
         self._update_simulation_count()
 
@@ -73,7 +75,7 @@ class SimulationSeries:
 
     # create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite
     def __str__(self):
-        return self.series_dir
+        return self.series_dir if self.series_dir is not None else "SimulationSeries"
 
     def _init_Simulation(self) -> None:
         """Initialzes `Simulation` objects for each log directory in the simulation."""
@@ -86,6 +88,61 @@ class SimulationSeries:
                 print("_init_Simulation: simulation_dir = ", simulation_path)
 
             self.simulations[log_dir] = Simulation(simulation_dir=simulation_path)
+
+    def add_simulation(
+        self,
+        simulation_dir: str | list[str],
+        log_dir: str | list[str] | None = None,
+    ) -> None:
+        """Adds one or multiple simulations from full simulation directory paths."""
+
+        simulation_dirs = (
+            [simulation_dir] if isinstance(simulation_dir, str) else simulation_dir
+        )
+        if not isinstance(simulation_dirs, list) or not all(
+            isinstance(path, str) for path in simulation_dirs
+        ):
+            raise TypeError("simulation_dir must be a string or a list of strings.")
+
+        if log_dir is None:
+            log_dirs = [
+                os.path.basename(os.path.normpath(path)) for path in simulation_dirs
+            ]
+        elif isinstance(log_dir, str):
+            if len(simulation_dirs) != 1:
+                raise ValueError(
+                    "log_dir must be a list when adding multiple simulations."
+                )
+            log_dirs = [log_dir]
+        elif isinstance(log_dir, list):
+            if len(log_dir) != len(simulation_dirs):
+                raise ValueError(
+                    "log_dir list must have the same length as simulation_dir list."
+                )
+            if not all(isinstance(name, str) for name in log_dir):
+                raise TypeError("log_dir list must contain only strings.")
+            log_dirs = log_dir
+        else:
+            raise TypeError("log_dir must be a string, list of strings, or None.")
+
+        duplicate_existing = [name for name in log_dirs if name in self.simulations]
+        if duplicate_existing:
+            raise ValueError(
+                f"Simulation(s) already exist in the series: {duplicate_existing}."
+            )
+
+        duplicate_new = [name for name in set(log_dirs) if log_dirs.count(name) > 1]
+        if duplicate_new:
+            raise ValueError(f"Duplicate log_dir values provided: {duplicate_new}.")
+
+        for path, name in zip(simulation_dirs, log_dirs):
+            self.simulations[name] = Simulation(simulation_dir=path)
+            self.log_dirs.append(name)
+
+        self.results = pd.concat(
+            [self.results, pd.DataFrame({"log_dir": log_dirs})], ignore_index=True
+        )
+        self._update_simulation_count()
 
     @staticmethod
     def extract_value(string, free_param: str):
@@ -146,6 +203,9 @@ class SimulationSeries:
     def delete_horribly_failed_simulations(self):
         """Deletes all simulations that have a profiles.index file with less than 2 lines."""
 
+        if self.series_dir is None:
+            raise ValueError("series_dir is None; there are no simulations to delete.")
+
         for log_dir in list(self.log_dirs):
             path_to_profile_index = os.path.join(
                 self.series_dir, log_dir, "profiles.index"
@@ -195,15 +255,31 @@ class SimulationSeries:
 
         for log_dir in to_remove:
             if log_dir in self.simulations:
-                self.remove(log_dir)
+                self.remove_simulation(log_dir)
 
-    def remove(self, log_dir):
-        """Removes the simulation with `log_dir` from the SimulationSeries."""
+    def remove_simulation(self, log_dir: str | list[str]) -> None:
+        """Removes one or multiple simulations from the SimulationSeries."""
 
-        self.results = self.results[self.results["log_dir"] != log_dir]
-        del self.simulations[log_dir]
-        del self.log_dirs[self.log_dirs.index(log_dir)]
+        log_dirs = [log_dir] if isinstance(log_dir, str) else log_dir
+        if not isinstance(log_dirs, list) or not all(
+            isinstance(name, str) for name in log_dirs
+        ):
+            raise TypeError("log_dir must be a string or a list of strings.")
+
+        missing = [name for name in log_dirs if name not in self.simulations]
+        if missing:
+            raise KeyError(f"Simulation(s) not in the series: {missing}.")
+
+        self.results = self.results[~self.results["log_dir"].isin(log_dirs)]
+        for name in log_dirs:
+            del self.simulations[name]
+            self.log_dirs.remove(name)
+
         self._update_simulation_count()
+
+    def remove(self, log_dir: str | list[str]) -> None:
+        """Backward-compatible alias for remove_simulation."""
+        self.remove_simulation(log_dir)
 
     def apply_filter(
         self,
@@ -214,7 +290,9 @@ class SimulationSeries:
     ) -> None:
         """Filters the SimulationSeries based on a condition."""
 
-        for log_dir in self.log_dirs:
+        to_remove: list[str] = []
+
+        for log_dir in list(self.log_dirs):
             sim = self.simulations[log_dir]
             fulfils_criterion: bool = sim.check_value(
                 quantity, value, model_number, relative_tolerance
@@ -226,7 +304,10 @@ class SimulationSeries:
                     if self.verbose
                     else None
                 )
-                self.remove(log_dir)
+                to_remove.append(log_dir)
+
+        if to_remove:
+            self.remove_simulation(to_remove)
 
     # ------------------------------ #
     # ----- Simulation Results ----- #
@@ -922,7 +1003,7 @@ class SimulationSeries:
 
         return fig, ax
 
-    # Todo: update to new method in Simulation
+    # TODO: update to new method in Simulation
     def mean_profile_sequence_plot(
         self,
         x: str,

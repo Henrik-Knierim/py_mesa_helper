@@ -1,4 +1,5 @@
 import os
+import shutil
 from typing import Any, Callable
 import numpy as np
 import inspect
@@ -46,15 +47,18 @@ def clean(
                 if file not in photos_to_save:
                     os.remove(os.path.join("photos", file))
         else:
-            os.system("rm -r photos")
+            shutil.rmtree("photos", ignore_errors=True)
 
     if remove_pngs:
-        os.system("rm -r png")
+        shutil.rmtree("png", ignore_errors=True)
 
     if remove_logs:
         if logs_path is None:
             raise ValueError("logs_path is not defined.")
-        os.system(f"rm -r {logs_path}")
+        if os.path.isdir(logs_path):
+            shutil.rmtree(logs_path, ignore_errors=True)
+        elif os.path.isfile(logs_path):
+            os.remove(logs_path)
 
 
 def single_data_mask(

@@ -4,6 +4,7 @@ from functools import lru_cache
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import os
+import shutil
 import numpy as np
 import pandas as pd
 from typing import Callable, Tuple
@@ -157,7 +158,7 @@ class SimulationSeries:
         # convert value either to a float or keep it as a string
         try:
             value = float(splitted_string[1].split("_")[1])
-        except:
+        except (ValueError, IndexError):
             value = splitted_string[1].split("_")[1:]
             # join the list of strings to a single string
             value = "_".join(value)
@@ -212,7 +213,7 @@ class SimulationSeries:
             )
             if not self._is_profile_index_valid(path_to_profile_index):
                 print(f"Deleting {log_dir}.") if self.verbose else None
-                os.system(f"rm -r {os.path.join(self.series_dir, log_dir)}")
+                shutil.rmtree(os.path.join(self.series_dir, log_dir))
                 # safe removal while iterating over copy
                 if log_dir in self.log_dirs:
                     self.log_dirs.remove(log_dir)
@@ -350,23 +351,29 @@ class SimulationSeries:
         elif len(key_names) != len(history_keys):
             raise ValueError("key_names must have the same length as history_keys.")
 
-        # remove the history key if it is already in the results
-        # also remove the key name if it is already in the results
-        for key_name, history_key in zip(key_names, history_keys):
-            if key_name in self.results.columns:
-                history_keys.remove(history_key)
-                key_names.remove(key_name)
+        requested_pairs = list(zip(history_keys, key_names))
+        pending_pairs = [
+            (history_key, key_name)
+            for history_key, key_name in requested_pairs
+            if key_name not in self.results.columns
+        ]
 
-        print("history_keys = ", history_keys) if self.verbose else None
+        if not pending_pairs:
+            return
 
-        # TODO: There is a bug here that only the last entry in the history_keys is added to the results
-        for history_key in history_keys:
-            [
+        (
+            print("history_keys = ", [pair[0] for pair in pending_pairs])
+            if self.verbose
+            else None
+        )
+
+        for history_key, key_name in pending_pairs:
+            for log_dir in self.log_dirs:
                 self.simulations[log_dir].add_history_data(
                     history_key, condition, value, key_name
                 )
-                for log_dir in self.log_dirs
-            ]
+
+        if self.log_dirs:
             dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
             filtered_dfs = [
                 df[

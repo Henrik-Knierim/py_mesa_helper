@@ -59,6 +59,14 @@ class TestSimulationSeries(unittest.TestCase):
         self.assertEqual(series.simulations, {})
         self.assertTrue(series.results.empty)
 
+    def test_add_history_data_with_multiple_keys(self):
+        series = SimulationSeries(series_dir="tests/LOGS")
+        series.add_history_data(["num_zones", "star_age"])
+
+        self.assertIn("num_zones", series.results.columns)
+        self.assertIn("star_age", series.results.columns)
+        self.assertEqual(len(series.results), series.n_simulations)
+
 
 if __name__ == "__main__":
     unittest.main()

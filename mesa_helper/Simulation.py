@@ -796,7 +796,7 @@ class Simulation:
         filter_x: Callable | list[Callable] | None = None,
         filter_y: Callable | list[Callable] | None = None,
         **kwargs,
-    ):
+    ) -> list[np.float64]:
         """Returns the integration of the profile data for `keys` for all profile numbers or model numbers specified.
 
         Parameters
@@ -843,6 +843,11 @@ class Simulation:
 
         elif profile_numbers != None:
             return [local_integrate(profile_number=i_p) for i_p in profile_numbers]
+
+        else:
+            raise ValueError(
+                "Either model_numbers or profile_numbers must be specified."
+            )
 
     def get_mean_profile_data_sequence(
         self,
@@ -895,6 +900,55 @@ class Simulation:
 
         elif profile_numbers != None:
             return [local_mean(profile_number=i_p) for i_p in profile_numbers]
+
+    def get_mean_profile_data_sequence_at_header_condition(
+        self,
+        keys: str | list,
+        condition: str,
+        values: list[float] | list[int] | np.ndarray,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ) -> list[np.float64]:
+        """Returns means of profile data for `keys` selected via profile header condition.
+
+        Parameters
+        ----------
+        keys : str | list
+            The keys to compute the mean of.
+        condition : str
+            Profile header quantity used to select the profile.
+        values : list[float] | list[int] | np.ndarray
+            Target values of the profile header quantity.
+        function_x : Callable | None, optional
+            The function to apply to the variable that is integrated. The default is None.
+        function_y : Callable | None, optional
+            The function to apply to `keys`. The default is None.
+        filter_x : Callable | list[Callable] | None, optional
+            The filter for the variable that is integrated. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            The filter for `keys`. The default is None.
+        """
+
+        def local_mean(model_number: int):
+            return self.mean(
+                keys,
+                model_number=model_number,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **kwargs,
+            )
+
+        model_numbers = [
+            self.get_model_number_at_profile_header_condition(condition, value)
+            for value in values
+        ]
+
+        return [local_mean(model_number=i_m) for i_m in model_numbers]
 
     def _interpolate_mesa_data(
         self,

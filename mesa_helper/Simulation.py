@@ -854,7 +854,7 @@ class Simulation:
         filter_x: Callable | list[Callable] | None = None,
         filter_y: Callable | list[Callable] | None = None,
         **kwargs,
-    ):
+    ) -> list[np.float64]:
         """Returns the mean of the profile data for `keys` for all profile numbers or model numbers specified.
 
         Parameters
@@ -1014,6 +1014,63 @@ class Simulation:
             kind="profile",
             model_number=model_number,
             profile_number=profile_number,
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
+        return f
+
+    def interpolate_profile_data_at_header_condition(
+        self,
+        x: str,
+        y: str,
+        condition: str,
+        value: float | int,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | None = None,
+        filter_y: Callable | None = None,
+        **kwargs,
+    ) -> Callable:
+        """Returns an interpolation function for profile data at a header condition.
+
+        The profile is selected by the header quantity `condition` that is closest to
+        `value`, and interpolation is performed with `numpy.interp`.
+
+        Parameters
+        ----------
+        x : str
+            The x-axis of the data.
+        y : str
+            The y-axis of the data.
+        condition : str
+            Profile header quantity used to select the profile.
+        value : float | int
+            Target value of the profile header quantity.
+        function_x : Callable | None, optional
+            The function to apply to the x-axis data. The default is None.
+        function_y : Callable | None, optional
+            The function to apply to the y-axis data. The default is None.
+        filter_x : Callable | None, optional
+            The filter for the x-axis data. The default is None.
+        filter_y : Callable | None, optional
+            The filter for the y-axis data. The default is None.
+        **kwargs : dict
+            Keyword arguments for `numpy.interp`.
+        """
+
+        model_number = self.get_model_number_at_profile_header_condition(
+            condition, value
+        )
+
+        f = self._interpolate_mesa_data(
+            x=x,
+            y=y,
+            kind="profile",
+            model_number=model_number,
             function_x=function_x,
             function_y=function_y,
             filter_x=filter_x,

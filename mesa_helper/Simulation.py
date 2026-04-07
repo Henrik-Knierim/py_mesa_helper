@@ -756,6 +756,38 @@ class Simulation:
 
         return model_number
 
+    def get_history_data_at_profile_header_condition(
+        self,
+        quantity: str,
+        condition: str,
+        value: float | int | list[float] | list[int] | np.ndarray,
+        **kwargs,
+    ) -> np.float64 | int | list[np.float64 | int]:
+        """Returns history `quantity` at the model closest to a profile header condition.
+
+        Parameters
+        ----------
+        quantity : str
+            History quantity to evaluate.
+        condition : str
+            Profile header quantity used to select the model.
+        value : float | int | list[float] | list[int] | np.ndarray
+            Target value(s) of the profile header quantity.
+        **kwargs : dict
+            Keyword arguments passed to profile-header lookup.
+        """
+
+        values = np.atleast_1d(value).tolist()
+
+        out = []
+        for v in values:
+            model_number = self.get_model_number_at_profile_header_condition(
+                condition, v, **kwargs
+            )
+            out.append(self.history.data_at_model_number(quantity, model_number))
+
+        return out[0] if len(out) == 1 else np.array(out)
+
     def get_profile_at_header_condition(
         self, condition: str, value: float | int, **kwargs
     ) -> mr.MesaData:
@@ -848,6 +880,91 @@ class Simulation:
             raise ValueError(
                 "Either model_numbers or profile_numbers must be specified."
             )
+
+    def get_integrated_profile_data_at_header_condition(
+        self,
+        keys: str | list,
+        condition: str,
+        value: float | int,
+        dx_key: str | None = None,
+        unit: str | float | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ) -> np.float64:
+        """Returns the integral of profile data at a profile header condition.
+
+        Parameters
+        ----------
+        keys : str | list
+            The keys to integrate.
+        condition : str
+            Profile header quantity used to select the profile.
+        value : float | int
+            Target value of the profile header quantity.
+        dx_key : str | None, optional
+            The differential key used for integration. The default is None.
+        unit : str | float | None, optional
+            Normalization of the integrated quantity. The default is None.
+        function_x : Callable | None, optional
+            Function applied to the integration variable. The default is None.
+        function_y : Callable | None, optional
+            Function applied to `keys`. The default is None.
+        filter_x : Callable | list[Callable] | None, optional
+            Filter for the integration variable. The default is None.
+        filter_y : Callable | list[Callable] | None, optional
+            Filter for `keys`. The default is None.
+        """
+
+        model_number = self.get_model_number_at_profile_header_condition(
+            condition, value, **kwargs
+        )
+
+        return self.integrate(
+            keys,
+            dx_key=dx_key,
+            model_number=model_number,
+            unit=unit,
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
+
+    def get_integrated_profile_data_sequence_at_header_condition(
+        self,
+        keys: str | list,
+        condition: str,
+        values: list[float] | list[int] | np.ndarray,
+        dx_key: str | None = None,
+        unit: str | float | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        **kwargs,
+    ) -> list[np.float64]:
+        """Returns integrations of profile data for `keys` selected via profile header condition."""
+
+        values = np.atleast_1d(values).tolist()
+        return [
+            self.get_integrated_profile_data_at_header_condition(
+                keys,
+                condition,
+                value,
+                dx_key=dx_key,
+                unit=unit,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                **kwargs,
+            )
+            for value in values
+        ]
 
     def get_mean_profile_data_sequence(
         self,

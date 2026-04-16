@@ -756,6 +756,20 @@ class Simulation:
 
         return model_number
 
+    def get_model_number_at_profile_header_condition_sequence(
+        self,
+        condition: str,
+        values: list[float] | list[int] | np.ndarray,
+        **kwargs,
+    ) -> list[int]:
+        """Returns the model numbers where the profile header `condition` is closest to each value in `values`."""
+
+        values = np.atleast_1d(values).tolist()
+        return [
+            self.get_model_number_at_profile_header_condition(condition, value, **kwargs)
+            for value in values
+        ]
+
     def get_history_data_at_profile_header_condition(
         self,
         quantity: str,
@@ -779,12 +793,13 @@ class Simulation:
 
         values = np.atleast_1d(value).tolist()
 
-        out = []
-        for v in values:
-            model_number = self.get_model_number_at_profile_header_condition(
-                condition, v, **kwargs
-            )
-            out.append(self.history.data_at_model_number(quantity, model_number))
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
+        out = [
+            self.history.data_at_model_number(quantity, model_number)
+            for model_number in model_numbers
+        ]
 
         return out[0] if len(out) == 1 else np.array(out)
 
@@ -809,11 +824,12 @@ class Simulation:
         self, quantity: str, condition: str, values: list[float] | list[int], **kwargs
     ):
         """Returns the profile data for `quantity` where the profile header `condition` is closest to each value in `values`."""
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
         return [
-            self.get_profile_data_at_header_condition(
-                quantity, condition, value, **kwargs
-            )
-            for value in values
+            self.log.profile_data(model_number=model_number, **kwargs).data(quantity)
+            for model_number in model_numbers
         ]
 
     def get_integrated_profile_data_sequence(
@@ -949,22 +965,20 @@ class Simulation:
     ) -> list[np.float64]:
         """Returns integrations of profile data for `keys` selected via profile header condition."""
 
-        values = np.atleast_1d(values).tolist()
-        return [
-            self.get_integrated_profile_data_at_header_condition(
-                keys,
-                condition,
-                value,
-                dx_key=dx_key,
-                unit=unit,
-                function_x=function_x,
-                function_y=function_y,
-                filter_x=filter_x,
-                filter_y=filter_y,
-                **kwargs,
-            )
-            for value in values
-        ]
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
+        return self.get_integrated_profile_data_sequence(
+            keys,
+            dx_key=dx_key,
+            model_numbers=model_numbers,
+            unit=unit,
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
     def get_mean_profile_data_sequence(
         self,
@@ -1060,10 +1074,9 @@ class Simulation:
                 **kwargs,
             )
 
-        model_numbers = [
-            self.get_model_number_at_profile_header_condition(condition, value)
-            for value in values
-        ]
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
 
         return [local_mean(model_number=i_m) for i_m in model_numbers]
 
@@ -2311,11 +2324,11 @@ class Simulation:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for value in values:
-            model_number = self.get_model_number_at_profile_header_condition(
-                condition=condition, value=value
-            )
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
 
+        for value, model_number in zip(values, model_numbers):
             local_kwargs = dict(kwargs)
             if set_labels:
                 label_value = (

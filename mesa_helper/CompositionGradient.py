@@ -512,7 +512,29 @@ class CompositionGradient:
         elif not 0 <= Z_env <= 1:
             raise Exception("Z_env needs to be between 0 and 1")
 
-        return Z_core - (Z_core - Z_env) / (1 + np.exp(-steepness * (m - m_b)))
+        return Z_core - (Z_core - Z_env) / (1 + np.exp(-steepness * (m - m_b) / m_b))
+    
+    @staticmethod
+    def reverse_sigmoid_integral(M_p: float, m_b: float, steepness: float = 100, Z_core: float = 1, Z_env: float = Z_Sol) -> float:
+        """Returns the integral of the reverse sigmoid function from 0 to M_p."""
+
+        # tests
+        if M_p < 0:
+            raise Exception("M_p needs to be >= 0")
+        elif m_b < 0:
+            raise Exception("m_core needs to be >= 0")
+        elif not 0 <= Z_core <= 1:
+            raise Exception("Z_core needs to be between 0 and 1")
+        elif not 0 <= Z_env <= 1:
+            raise Exception("Z_env needs to be between 0 and 1")
+
+        pI: float = M_p * Z_core
+
+        # second part of the integral is a bit more complicated, so we define it as log_term for better readability
+        log_term: float = np.log((np.exp(steepness) + np.exp(steepness * M_p / m_b))/(1 + np.exp(steepness)))
+        pII: float = m_b * (Z_env - Z_core) * log_term / steepness
+
+        return pI + pII
 
     # TODO: This function is a special case of the piecewise_with_two_smoothed_exponential_transitions function.
     @staticmethod

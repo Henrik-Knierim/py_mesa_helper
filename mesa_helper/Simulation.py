@@ -766,7 +766,9 @@ class Simulation:
 
         values = np.atleast_1d(values).tolist()
         return [
-            self.get_model_number_at_profile_header_condition(condition, value, **kwargs)
+            self.get_model_number_at_profile_header_condition(
+                condition, value, **kwargs
+            )
             for value in values
         ]
 

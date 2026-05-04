@@ -14,7 +14,12 @@ from mesa_helper.astrophys import (
     _compute_mean,
     _integrate,
 )
-from mesa_helper.utils import single_data_mask, multiple_data_mask, extract_expression
+from mesa_helper.utils import (
+    single_data_mask,
+    multiple_data_mask,
+    extract_expression,
+    process_custom_key,
+)
 from functools import lru_cache
 
 
@@ -1496,6 +1501,36 @@ class Simulation:
     # * ------------------------------ #
     # * -------- Plot Results -------- #
     # * ------------------------------ #
+
+    def _get_data_with_custom_keys(self, key: str, mesa_data) -> np.ndarray:
+        """
+        Retrieve data from mesa_reader with support for custom key prefixes.
+
+        Handles custom prefixes like `abslog_` (for log10(abs(x))) and `absln_`
+        (for ln(abs(x))), which are useful for negative quantities.
+
+        Parameters
+        ----------
+        key : str
+            The key to retrieve. Can include custom prefixes like `abslog_`, `absln_`.
+        mesa_data : mesa_reader.MesaData
+            The mesa_reader data object.
+
+        Returns
+        -------
+        np.ndarray
+            The data array, with custom transformations applied if needed.
+        """
+        base_key, transform_func = process_custom_key(key, mesa_data)
+
+        if transform_func is not None:
+            # Custom prefix found, apply transformation
+            values = mesa_data.data(base_key)
+            return transform_func(values)
+        else:
+            # No custom prefix, use mesa_reader directly
+            return mesa_data.data(key)
+
     def _composite_data(
         self,
         keys: str | list,
@@ -1519,7 +1554,7 @@ class Simulation:
 
             print("_composite_data: key is a string") if self.verbose else None
 
-            values = mesa_data.data(keys)
+            values = self._get_data_with_custom_keys(keys, mesa_data)
             mask = single_data_mask(values, filter)
 
             if function is not None:
@@ -1528,7 +1563,7 @@ class Simulation:
         elif isinstance(keys, list):
             print("_composite_data: key is a list") if self.verbose else None
 
-            values = [mesa_data.data(key) for key in keys]
+            values = [self._get_data_with_custom_keys(key, mesa_data) for key in keys]
             mask = multiple_data_mask(values, filter)
 
             if function is None:

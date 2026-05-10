@@ -167,3 +167,50 @@ def extract_expression(func):
         return extract_function_expression(func)
     else:
         raise ValueError("The input is not a function or a lambda function.")
+
+
+# Custom key prefix handlers for mesa_reader
+CUSTOM_KEY_PREFIXES = {
+    "abslog_": ("log10(abs(x))", lambda x: np.log10(np.abs(x))),
+    "absln_": ("ln(abs(x))", lambda x: np.log(np.abs(x))),
+}
+
+
+def process_custom_key(key: str, mesa_data) -> tuple[str | None, Callable | None]:
+    """
+    Process custom key prefixes for mesa_reader data.
+
+    Supports custom prefixes like `abslog_` for log10(abs(x)) and `absln_` for ln(abs(x)).
+    This is useful for quantities that can be negative (e.g., J4 moment of inertia).
+
+    Parameters
+    ----------
+    key : str
+        The key to process. If it starts with a custom prefix, returns the base key
+        and a function to apply.
+    mesa_data : mesa_reader.MesaData
+        The mesa_reader data object (used to retrieve the actual data).
+
+    Returns
+    -------
+    tuple[str | None, Callable | None]
+        A tuple of (base_key, transform_function) if a custom prefix is found,
+        or (None, None) if no custom prefix matches. The transform_function
+        takes a numpy array and returns the transformed array.
+
+    Examples
+    --------
+    >>> # For data where J4 is negative:
+    >>> key = "abslog_J4"
+    >>> base_key, transform = process_custom_key(key, mesa_data)
+    >>> base_key
+    'J4'
+    >>> data = mesa_data.data(base_key)
+    >>> result = transform(data)  # Returns log10(abs(J4))
+    """
+    for prefix, (description, transform_func) in CUSTOM_KEY_PREFIXES.items():
+        if key.startswith(prefix):
+            base_key = key[len(prefix) :]
+            return base_key, transform_func
+
+    return None, None

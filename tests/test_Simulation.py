@@ -120,6 +120,28 @@ class TestSimulation(unittest.TestCase):
 
         self.assertTrue(np.allclose(star_age, star_age_comparison))
 
+    def test_get_model_number_at_profile_header_condition_sequence(self):
+        """Tests whether the header-condition model-number sequence lookup works."""
+
+        values = [1e3, 1e8, 5e9]
+        expected = [
+            self.sim.get_model_number_at_profile_header_condition("star_age", value)
+            for value in values
+        ]
+
+        self.assertEqual(
+            self.sim.get_model_number_at_profile_header_condition_sequence(
+                "star_age", values
+            ),
+            expected,
+        )
+        self.assertEqual(
+            self.sim.get_model_number_at_profile_header_condition_sequence(
+                "star_age", np.array(values)
+            ),
+            expected,
+        )
+
     def test_get_profile_data_at_header_condition(self):
         """Tests whether the get_profile_data_at_header_condition method works."""
         t = 1e3

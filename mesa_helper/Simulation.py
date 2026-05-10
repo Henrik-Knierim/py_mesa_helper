@@ -14,7 +14,12 @@ from mesa_helper.astrophys import (
     _compute_mean,
     _integrate,
 )
-from mesa_helper.utils import single_data_mask, multiple_data_mask, extract_expression
+from mesa_helper.utils import (
+    single_data_mask,
+    multiple_data_mask,
+    extract_expression,
+    process_custom_key,
+)
 from functools import lru_cache
 
 
@@ -756,6 +761,22 @@ class Simulation:
 
         return model_number
 
+    def get_model_number_at_profile_header_condition_sequence(
+        self,
+        condition: str,
+        values: list[float] | list[int] | np.ndarray,
+        **kwargs,
+    ) -> list[int]:
+        """Returns the model numbers where the profile header `condition` is closest to each value in `values`."""
+
+        values = np.atleast_1d(values).tolist()
+        return [
+            self.get_model_number_at_profile_header_condition(
+                condition, value, **kwargs
+            )
+            for value in values
+        ]
+
     def get_history_data_at_profile_header_condition(
         self,
         quantity: str,
@@ -779,12 +800,13 @@ class Simulation:
 
         values = np.atleast_1d(value).tolist()
 
-        out = []
-        for v in values:
-            model_number = self.get_model_number_at_profile_header_condition(
-                condition, v, **kwargs
-            )
-            out.append(self.history.data_at_model_number(quantity, model_number))
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
+        out = [
+            self.history.data_at_model_number(quantity, model_number)
+            for model_number in model_numbers
+        ]
 
         return out[0] if len(out) == 1 else np.array(out)
 
@@ -809,11 +831,12 @@ class Simulation:
         self, quantity: str, condition: str, values: list[float] | list[int], **kwargs
     ):
         """Returns the profile data for `quantity` where the profile header `condition` is closest to each value in `values`."""
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
         return [
-            self.get_profile_data_at_header_condition(
-                quantity, condition, value, **kwargs
-            )
-            for value in values
+            self.log.profile_data(model_number=model_number, **kwargs).data(quantity)
+            for model_number in model_numbers
         ]
 
     def get_integrated_profile_data_sequence(
@@ -949,22 +972,20 @@ class Simulation:
     ) -> list[np.float64]:
         """Returns integrations of profile data for `keys` selected via profile header condition."""
 
-        values = np.atleast_1d(values).tolist()
-        return [
-            self.get_integrated_profile_data_at_header_condition(
-                keys,
-                condition,
-                value,
-                dx_key=dx_key,
-                unit=unit,
-                function_x=function_x,
-                function_y=function_y,
-                filter_x=filter_x,
-                filter_y=filter_y,
-                **kwargs,
-            )
-            for value in values
-        ]
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
+        return self.get_integrated_profile_data_sequence(
+            keys,
+            dx_key=dx_key,
+            model_numbers=model_numbers,
+            unit=unit,
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
     def get_mean_profile_data_sequence(
         self,
@@ -1060,10 +1081,9 @@ class Simulation:
                 **kwargs,
             )
 
-        model_numbers = [
-            self.get_model_number_at_profile_header_condition(condition, value)
-            for value in values
-        ]
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
 
         return [local_mean(model_number=i_m) for i_m in model_numbers]
 
@@ -1481,6 +1501,36 @@ class Simulation:
     # * ------------------------------ #
     # * -------- Plot Results -------- #
     # * ------------------------------ #
+
+    def _get_data_with_custom_keys(self, key: str, mesa_data) -> np.ndarray:
+        """
+        Retrieve data from mesa_reader with support for custom key prefixes.
+
+        Handles custom prefixes like `abslog_` (for log10(abs(x))) and `absln_`
+        (for ln(abs(x))), which are useful for negative quantities.
+
+        Parameters
+        ----------
+        key : str
+            The key to retrieve. Can include custom prefixes like `abslog_`, `absln_`.
+        mesa_data : mesa_reader.MesaData
+            The mesa_reader data object.
+
+        Returns
+        -------
+        np.ndarray
+            The data array, with custom transformations applied if needed.
+        """
+        base_key, transform_func = process_custom_key(key, mesa_data)
+
+        if transform_func is not None:
+            # Custom prefix found, apply transformation
+            values = mesa_data.data(base_key)
+            return transform_func(values)
+        else:
+            # No custom prefix, use mesa_reader directly
+            return mesa_data.data(key)
+
     def _composite_data(
         self,
         keys: str | list,
@@ -1504,7 +1554,7 @@ class Simulation:
 
             print("_composite_data: key is a string") if self.verbose else None
 
-            values = mesa_data.data(keys)
+            values = self._get_data_with_custom_keys(keys, mesa_data)
             mask = single_data_mask(values, filter)
 
             if function is not None:
@@ -1513,7 +1563,7 @@ class Simulation:
         elif isinstance(keys, list):
             print("_composite_data: key is a list") if self.verbose else None
 
-            values = [mesa_data.data(key) for key in keys]
+            values = [self._get_data_with_custom_keys(key, mesa_data) for key in keys]
             mask = multiple_data_mask(values, filter)
 
             if function is None:
@@ -2311,11 +2361,11 @@ class Simulation:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for value in values:
-            model_number = self.get_model_number_at_profile_header_condition(
-                condition=condition, value=value
-            )
+        model_numbers = self.get_model_number_at_profile_header_condition_sequence(
+            condition, values, **kwargs
+        )
 
+        for value, model_number in zip(values, model_numbers):
             local_kwargs = dict(kwargs)
             if set_labels:
                 label_value = (

@@ -49,38 +49,86 @@ class TestUtils(unittest.TestCase):
         mask = utils.multiple_data_mask([x_1, x_2], [lambda x: x < 0.5, None])
         x_1_comparison = np.array([0.0, 0.1, 0.2, 0.3, 0.4])
         self.assertTrue(np.allclose(x_1[mask], x_1_comparison))
-        
+
         # if we supply a mask function, it should return the correct mask
-        mask = utils.multiple_data_mask([x_1, x_2], [lambda x: x < 0.5, lambda x: x < -0.1])
+        mask = utils.multiple_data_mask(
+            [x_1, x_2], [lambda x: x < 0.5, lambda x: x < -0.1]
+        )
         x_1_comparison = np.array([0.2, 0.3, 0.4])
         self.assertTrue(np.allclose(x_1[mask], x_1_comparison))
-    
+
     def test_extract_function_definition(self):
         """Tests whether the function definition extraction works."""
 
-        sol = 'x_1/x_2'
+        sol = "x_1 / x_2"
 
         # case 1: lambda function predefined
-        f = lambda x_1, x_2: x_1/x_2
+        f = lambda x_1, x_2: x_1 / x_2
         self.assertEqual(utils.extract_expression(f), sol)
 
         # case 2: lambda function not predefined
-        self.assertEqual(utils.extract_expression(lambda x_1, x_2: x_1/x_2), sol)
+        self.assertEqual(utils.extract_expression(lambda x_1, x_2: x_1 / x_2), sol)
 
         # case 3: function predefined
         def f(x_1, x_2):
-            return x_1/x_2
+            return x_1 / x_2
+
         self.assertEqual(utils.extract_expression(f), sol)
 
         # case 4: lambda function with comments
-        f = lambda x_1, x_2: x_1/x_2 # this is a comment
+        f = lambda x_1, x_2: x_1 / x_2  # this is a comment
         self.assertEqual(utils.extract_expression(f), sol)
 
         # case 5: function with comments
         def f(x_1, x_2):
-            return x_1/x_2 # this is a comment
+            return x_1 / x_2  # this is a comment
+
         self.assertEqual(utils.extract_expression(f), sol)
-        
+
+    def test_process_custom_key_abslog(self):
+        """Tests whether the custom key processor handles abslog_ prefix."""
+
+        key = "abslog_J4"
+        base_key, transform_func = utils.process_custom_key(key, None)
+
+        # Check that the correct base key was extracted
+        self.assertEqual(base_key, "J4")
+        self.assertIsNotNone(transform_func)
+
+        # Check that the transformation works correctly
+        test_data = np.array([-10.0, -1.0, 1.0, 100.0])
+        result = transform_func(test_data)
+        expected = np.log10(np.abs(test_data))
+
+        self.assertTrue(np.allclose(result, expected))
+
+    def test_process_custom_key_absln(self):
+        """Tests whether the custom key processor handles absln_ prefix."""
+
+        key = "absln_J2"
+        base_key, transform_func = utils.process_custom_key(key, None)
+
+        # Check that the correct base key was extracted
+        self.assertEqual(base_key, "J2")
+        self.assertIsNotNone(transform_func)
+
+        # Check that the transformation works correctly
+        test_data = np.array([-10.0, -1.0, 1.0, 100.0])
+        result = transform_func(test_data)
+        expected = np.log(np.abs(test_data))
+
+        self.assertTrue(np.allclose(result, expected))
+
+    def test_process_custom_key_no_prefix(self):
+        """Tests that process_custom_key returns None for keys without custom prefixes."""
+
+        test_keys = ["log_L", "J4", "star_age", "ln_Teff"]
+
+        for key in test_keys:
+            base_key, transform_func = utils.process_custom_key(key, None)
+            self.assertIsNone(base_key, f"Expected None for key '{key}'")
+            self.assertIsNone(transform_func, f"Expected None for key '{key}'")
+
 
 if __name__ == "__main__":
     unittest.main()

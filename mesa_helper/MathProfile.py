@@ -354,10 +354,9 @@ class MathProfile:
     def reverse_sigmoid(
         m: np.ndarray,
         m_b: float,
-        steepness: float = 100,
+        steepness: float = 10,
         f_core: float = 1,
         f_env: float = 0,
-        **kwargs,
     ) -> np.ndarray:
         """Sigmoid profile decreasing from f_core to f_env.
 
@@ -393,13 +392,13 @@ class MathProfile:
         if m_b < 0:
             raise ValueError("m_b needs to be >= 0")
 
-        return f_core - (f_core - f_env) / (1 + np.exp(-steepness * (m - m_b)))
+        return f_core - (f_core - f_env) / (1 + np.exp(-steepness * (m - m_b) / m_b))
 
     @staticmethod
     def reverse_sigmoid_integral(
         M_p: float,
         m_b: float,
-        steepness: float = 100,
+        steepness: float = 10,
         f_core: float = 1,
         f_env: float = 0,
     ) -> float:

@@ -53,10 +53,9 @@ class Simulation:
 
         # then, initialize the mesa logs and histories
         self.log: mr.MesaLogDir = mr.MesaLogDir(self.sim_dir)
-        self.history: mr.MesaData = self.log.history
 
         # if the history is None, then the simulation did not run successfully
-        if self.history is None:
+        if self.log.history is None:
             raise ValueError(f"The simulation {self.sim} did not run successfully.")
 
         # data frame for extracting results
@@ -65,6 +64,11 @@ class Simulation:
     # create a __str__ method that returns the name of the suite, or the name of the simulation if there is no suite
     def __str__(self):
         return self.sim
+
+    @property
+    def history(self) -> mr.MesaData:
+        """Return the current MesaLogDir history (always up to date after read_logs())."""
+        return self.log.history
 
     @staticmethod
     def _extract_value(string, free_param: str):
@@ -145,7 +149,7 @@ class Simulation:
         quantity: str,
         value: float,
         model_number: int = -1,
-        relative_tolerance: float = 1e-3,
+        rtol: float = 1e-3,
     ) -> bool:
         """Checks if the quantity is equal to a certain value to a certain tolerance.
 
@@ -157,8 +161,8 @@ class Simulation:
             value to compare to
         model_number : int, optional
             model number at which to evaluate the quantity, by default -1
-        relative_tolerance : float, optional
-            tolerance below which a quantitiy is considered to be conserved, by default 1e-3
+        rtol : float, optional
+            relative tolerance for the comparison, by default 1e-3
 
         Returns
         -------
@@ -173,7 +177,7 @@ class Simulation:
             quantity, model_number
         )
 
-        return np.abs(quantity_value - value) / value < relative_tolerance
+        return np.isclose(quantity_value, value, rtol=rtol)
 
     def check_if_greater_than(
         self,
@@ -263,7 +267,7 @@ class Simulation:
         condition: str,
         value: int | float,
         check_tolerance: bool = False,
-        relative_tolerance: float = 1e-3,
+        rtol: float = 1e-3,
     ) -> np.float64 | int:
         """Returns the history data for `quantity` where the quantity is closest to `value`.
 
@@ -277,7 +281,7 @@ class Simulation:
             The value that the quantity should be closest to.
         check_tolerance : bool, optional
             If True, then the quantity is checked to be within the given tolerance. The default is False.
-        relative_tolerance : float, optional
+        rtol : float, optional
             The relative tolerance for the quantity. The default is 1e-3.
         """
 
@@ -307,10 +311,10 @@ class Simulation:
                 condition,
                 value,
                 model_number=model_number,
-                relative_tolerance=relative_tolerance,
+                rtol=rtol,
             ):
                 raise ValueError(
-                    f"The quantity {condition} is not within the given tolerance of {relative_tolerance:.2e}."
+                    f"The quantity {condition} is not within the given tolerance of {rtol:.2e}."
                 )
 
         return self.history.data_at_model_number(quantity, model_number)

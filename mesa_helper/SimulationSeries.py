@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from typing import Callable, Tuple
 from mesa_helper.Simulation import Simulation
-from mesa_helper.utils import sort_list_by_variable
+from mesa_helper.utils import sort_list_by_variable, _get_kwargs_for_index, _is_list_of_options
 
 
 class SimulationSeries:
@@ -687,7 +687,7 @@ class SimulationSeries:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for log_key, sim in self.simulations.items():
+        for i, (log_key, sim) in enumerate(self.simulations.items()):
             sim.profile_plot(
                 x,
                 y,
@@ -696,7 +696,7 @@ class SimulationSeries:
                 fig=fig,
                 ax=ax,
                 set_label=set_label,
-                **kwargs,
+                **_get_kwargs_for_index(kwargs, i),
             )
 
         return fig, ax
@@ -749,7 +749,7 @@ class SimulationSeries:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for log_key, sim in self.simulations.items():
+        for i, (log_key, sim) in enumerate(self.simulations.items()):
             sim.history_plot(
                 x,
                 y,
@@ -758,7 +758,7 @@ class SimulationSeries:
                 set_label=set_label,
                 filter_x=filter_x,
                 filter_y=filter_y,
-                **kwargs,
+                **_get_kwargs_for_index(kwargs, i),
             )
 
         return fig, ax
@@ -804,7 +804,7 @@ class SimulationSeries:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for sim in self.simulations.values():
+        for i, sim in enumerate(self.simulations.values()):
             sim.history_composition_plot(
                 x,
                 y,
@@ -815,7 +815,7 @@ class SimulationSeries:
                 set_label=set_label,
                 filter_x=filter_x,
                 filter_y=filter_y,
-                **kwargs,
+                **_get_kwargs_for_index(kwargs, i),
             )
 
         return fig, ax
@@ -860,7 +860,7 @@ class SimulationSeries:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for sim in self.simulations.values():
+        for i, sim in enumerate(self.simulations.values()):
             sim.history_ratio_plot(
                 x,
                 y_numerator,
@@ -871,7 +871,7 @@ class SimulationSeries:
                 filter_x=filter_x,
                 filter_y_numerator=filter_y_numerator,
                 filter_y_denominator=filter_y_denominator,
-                **kwargs,
+                **_get_kwargs_for_index(kwargs, i),
             )
 
         return fig, ax
@@ -926,7 +926,7 @@ class SimulationSeries:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for sim in self.simulations.values():
+        for i, sim in enumerate(self.simulations.values()):
             sim.profile_composition_plot(
                 x=x,
                 y=y,
@@ -940,7 +940,7 @@ class SimulationSeries:
                 set_axes_labels=set_axes_labels,
                 filter_x=filter_x,
                 filter_y=filter_y,
-                **kwargs,
+                **_get_kwargs_for_index(kwargs, i),
             )
 
         return fig, ax
@@ -1028,7 +1028,7 @@ class SimulationSeries:
         if ax is None:
             fig, ax = plt.subplots()
 
-        for log_key, sim in self.simulations.items():
+        for i, (log_key, sim) in enumerate(self.simulations.items()):
             sim.mean_profile_sequence_plot(
                 x,
                 y,
@@ -1038,7 +1038,7 @@ class SimulationSeries:
                 ax=ax,
                 model_numbers=model_numbers,
                 profile_numbers=profile_numbers,
-                **kwargs,
+                **_get_kwargs_for_index(kwargs, i),
             )
 
         return fig, ax

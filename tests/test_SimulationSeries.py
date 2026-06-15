@@ -67,6 +67,62 @@ class TestSimulationSeries(unittest.TestCase):
         self.assertIn("star_age", series.results.columns)
         self.assertEqual(len(series.results), series.n_simulations)
 
+    def test_kwargs_cycling_single_value(self):
+        series = SimulationSeries(series_dir="tests/LOGS")
+        fig, ax = series.history_plot(
+            x="star_age",
+            y="num_zones",
+            color="red",
+            linewidth=2.5,
+        )
+        lines = ax.get_lines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].get_color(), "red")
+        self.assertEqual(lines[1].get_color(), "red")
+        self.assertEqual(lines[0].get_linewidth(), 2.5)
+        self.assertEqual(lines[1].get_linewidth(), 2.5)
+
+    def test_kwargs_cycling_list_values(self):
+        series = SimulationSeries(series_dir="tests/LOGS")
+        fig, ax = series.history_plot(
+            x="star_age",
+            y="num_zones",
+            color=["blue", "green"],
+            linewidth=[1.5, 3.5],
+        )
+        lines = ax.get_lines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].get_color(), "blue")
+        self.assertEqual(lines[1].get_color(), "green")
+        self.assertEqual(lines[0].get_linewidth(), 1.5)
+        self.assertEqual(lines[1].get_linewidth(), 3.5)
+
+    def test_kwargs_cycling_list_values_cycle(self):
+        series = SimulationSeries(series_dir="tests/LOGS")
+        fig, ax = series.history_plot(
+            x="star_age",
+            y="num_zones",
+            color=["orange"],
+        )
+        lines = ax.get_lines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].get_color(), "orange")
+        self.assertEqual(lines[1].get_color(), "orange")
+
+    def test_kwargs_rgb_dashes_single_values(self):
+        series = SimulationSeries(series_dir="tests/LOGS")
+        fig, ax = series.history_plot(
+            x="star_age",
+            y="num_zones",
+            color=[1.0, 0.0, 0.0],
+            dashes=[2, 2],
+        )
+        lines = ax.get_lines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].get_color(), [1.0, 0.0, 0.0])
+        self.assertEqual(lines[1].get_color(), [1.0, 0.0, 0.0])
+        self.assertEqual(lines[0].get_linestyle(), lines[1].get_linestyle())
+
 
 if __name__ == "__main__":
     unittest.main()

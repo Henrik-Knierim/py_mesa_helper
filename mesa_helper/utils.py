@@ -214,3 +214,43 @@ def process_custom_key(key: str, mesa_data) -> tuple[str | None, Callable | None
             return base_key, transform_func
 
     return None, None
+
+
+def _is_list_of_options(key: str, value: any) -> bool:
+    """Helper to check if a matplotlib keyword argument value is a list of options.
+
+    If it's a list, and not a single value format (like RGB/RGBA list, dashes, markevery),
+    then it is treated as a list of options to loop/cycle over.
+    """
+    if not isinstance(value, list):
+        return False
+
+    # Check for color: [r, g, b] or [r, g, b, a] where elements are numbers
+    color_keys = {'color', 'c', 'edgecolor', 'facecolor', 'markeredgecolor', 'markerfacecolor'}
+    if key in color_keys:
+        if len(value) in (3, 4) and all(isinstance(x, (int, float)) for x in value):
+            return False
+
+    # Check for dashes: [offset, [draw, skip, ...]] or [draw, skip, ...]
+    if key == 'dashes':
+        if all(isinstance(x, (int, float)) for x in value):
+            return False
+
+    # Check for markevery: [start, interval] or list of indices
+    if key == 'markevery':
+        if all(isinstance(x, int) for x in value):
+            return False
+
+    return True
+
+
+def _get_kwargs_for_index(kwargs: dict, index: int) -> dict:
+    """Helper to extract individual kwargs for a specific plot index."""
+    res = {}
+    for k, v in kwargs.items():
+        if _is_list_of_options(k, v):
+            res[k] = v[index % len(v)]
+        else:
+            res[k] = v
+    return res
+

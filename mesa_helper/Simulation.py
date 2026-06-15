@@ -357,6 +357,22 @@ class Simulation:
             ]
             self.results[key_name] = out
 
+    def _map_over_profile_sequence(
+        self,
+        func: Callable,
+        model_numbers: list[int] | np.ndarray | None = None,
+        profile_numbers: list[int] | np.ndarray | None = None,
+    ) -> list:
+        """Helper to map a callback function over a sequence of profile or model numbers."""
+        if model_numbers is None and profile_numbers is None:
+            return [func(profile_number=i) for i in self.log.profile_numbers]
+        elif model_numbers is not None:
+            return [func(model_number=i) for i in model_numbers]
+        elif profile_numbers is not None:
+            return [func(profile_number=i) for i in profile_numbers]
+        else:
+            raise ValueError("Either model_numbers or profile_numbers must be specified.")
+
     def get_profile_data_sequence(
         self,
         quantity: str,
@@ -366,23 +382,59 @@ class Simulation:
     ) -> list[np.ndarray]:
         """Returns the profile data for `quantity` for all profile numbers in `profile_numbers`."""
 
-        if model_numbers is None and profile_numbers is None:
-            indices: np.ndarray = self.log.profile_numbers
-            f = lambda i: self.log.profile_data(profile_number=i, **kwargs).data(
-                quantity
-            )
+        def local_data(model_number: int = -1, profile_number: int = -1):
+            if model_number != -1:
+                return self.log.profile_data(model_number=model_number, **kwargs).data(quantity)
+            else:
+                return self.log.profile_data(profile_number=profile_number, **kwargs).data(quantity)
 
-        elif model_numbers is not None:
-            indices = model_numbers
-            f = lambda i: self.log.profile_data(model_number=i, **kwargs).data(quantity)
+        return self._map_over_profile_sequence(
+            local_data,
+            model_numbers=model_numbers,
+            profile_numbers=profile_numbers,
+        )
 
-        elif profile_numbers is not None:
-            indices = profile_numbers
-            f = lambda i: self.log.profile_data(profile_number=i, **kwargs).data(
-                quantity
-            )
+    def _get_f_and_dx(
+        self,
+        keys: str | list,
+        dx_key: str | None = None,
+        model_number: int = -1,
+        profile_number: int = -1,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        kind: str = "profile",
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Helper to get composite data `f` and `dx` values after masking."""
+        if dx_key is None:
+            dx_key = "dm" if kind == "profile" else "star_age"
 
-        return [f(i) for i in indices]
+        if kind not in ["profile", "history"]:
+            raise ValueError("kind must be either 'profile' or 'history'.")
+
+        dx, mask_dx = self._composite_data(
+            keys=dx_key,
+            function=function_x,
+            filter=filter_x,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
+        )
+        print(f"get_f_and_dx: dx: {dx[mask_dx]}") if self.verbose else None
+
+        f, mask_f = self._composite_data(
+            keys=keys,
+            function=function_y,
+            filter=filter_y,
+            kind=kind,
+            model_number=model_number,
+            profile_number=profile_number,
+        )
+        print(f"get_f_and_dx: f: {f[mask_f]}") if self.verbose else None
+
+        mask = mask_f & mask_dx
+        return f[mask], dx[mask]
 
     def integrate(
         self,
@@ -432,34 +484,19 @@ class Simulation:
             If `kind` is not 'profile' or 'history'.
         """
 
-        if dx_key is None:
-            dx_key = "dm" if kind == "profile" else "star_age"
-
-        # raise an error if kind is not 'profile' or 'history'
-        if kind not in ["profile", "history"]:
-            raise ValueError("kind must be either 'profile' or 'history'.")
-
-        dx, mask_dx = self._composite_data(
-            keys=dx_key,
-            function=function_x,
-            filter=filter_x,
-            kind=kind,
-            model_number=model_number,
-            profile_number=profile_number,
-        )
-
-        f, mask_f = self._composite_data(
+        f_masked, dx_masked = self._get_f_and_dx(
             keys=keys,
-            function=function_y,
-            filter=filter_y,
-            kind=kind,
+            dx_key=dx_key,
             model_number=model_number,
             profile_number=profile_number,
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            kind=kind,
         )
 
-        mask = mask_f & mask_dx
-
-        return _integrate(f[mask], dx[mask], unit=unit)
+        return _integrate(f_masked, dx_masked, unit=unit)
 
     def mean(
         self,
@@ -512,36 +549,21 @@ class Simulation:
         # returns the mean of Z = 1-X-Y for the first  profile
         """
 
-        dx_dict = {"profile": "dm", "history": "star_age"}
+        dx_key = "dm" if kind == "profile" else "star_age"
 
-        # raise an error if kind is not 'profile' or 'history'
-        if kind not in dx_dict.keys():
-            raise ValueError("kind must be either 'profile' or 'history'.")
-
-        dx, mask_dx = self._composite_data(
-            keys=dx_dict[kind],
-            function=function_x,
-            filter=filter_x,
-            kind=kind,
-            model_number=model_number,
-            profile_number=profile_number,
-        )
-        print(f"mean: dx: {dx[mask_dx]}") if self.verbose else None
-
-        f, mask_f = self._composite_data(
+        f_masked, dx_masked = self._get_f_and_dx(
             keys=keys,
-            function=function_y,
-            filter=filter_y,
-            kind=kind,
+            dx_key=dx_key,
             model_number=model_number,
             profile_number=profile_number,
+            function_x=function_x,
+            function_y=function_y,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            kind=kind,
         )
 
-        print(f"mean: f: {f[mask_f]}") if self.verbose else None
-
-        mask = mask_f & mask_dx
-
-        return _compute_mean(f[mask], dx[mask])
+        return _compute_mean(f_masked, dx_masked)
 
     def add_profile_data(
         self,
@@ -892,21 +914,11 @@ class Simulation:
                 **kwargs,
             )
 
-        if profile_numbers == None and model_numbers == None:
-            return [
-                local_integrate(profile_number=i_p) for i_p in self.log.profile_numbers
-            ]
-
-        elif model_numbers != None:
-            return [local_integrate(model_number=i_m) for i_m in model_numbers]
-
-        elif profile_numbers != None:
-            return [local_integrate(profile_number=i_p) for i_p in profile_numbers]
-
-        else:
-            raise ValueError(
-                "Either model_numbers or profile_numbers must be specified."
-            )
+        return self._map_over_profile_sequence(
+            local_integrate,
+            model_numbers=model_numbers,
+            profile_numbers=profile_numbers,
+        )
 
     def get_integrated_profile_data_at_header_condition(
         self,
@@ -1034,14 +1046,11 @@ class Simulation:
                 **kwargs,
             )
 
-        if profile_numbers == None and model_numbers == None:
-            return [local_mean(profile_number=i_p) for i_p in self.log.profile_numbers]
-
-        elif model_numbers != None:
-            return [local_mean(model_number=i_m) for i_m in model_numbers]
-
-        elif profile_numbers != None:
-            return [local_mean(profile_number=i_p) for i_p in profile_numbers]
+        return self._map_over_profile_sequence(
+            local_mean,
+            model_numbers=model_numbers,
+            profile_numbers=profile_numbers,
+        )
 
     def get_mean_profile_data_sequence_at_header_condition(
         self,

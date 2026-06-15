@@ -320,6 +320,24 @@ class SimulationSeries:
         combined_df = pd.concat(dfs).groupby("log_dir", as_index=False).first()
         self.results = pd.merge(self.results, combined_df, on="log_dir", how="left")
 
+    def _sync_results_from_simulations(self) -> None:
+        """Helper to sync self.results with individual simulation results dfs."""
+        if not self.log_dirs:
+            return
+        dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
+        filtered_dfs = [
+            df[
+                [
+                    col
+                    for col in df.columns
+                    if col not in self.results.columns or col == "log_dir"
+                ]
+            ]
+            for df in dfs
+        ]
+        print("dfs = ", filtered_dfs) if self.verbose else None
+        self.merge_results(filtered_dfs)
+
     def add_history_data(
         self,
         history_keys: str | list[str],
@@ -373,20 +391,7 @@ class SimulationSeries:
                     history_key, condition, value, key_name
                 )
 
-        if self.log_dirs:
-            dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
-            filtered_dfs = [
-                df[
-                    [
-                        col
-                        for col in df.columns
-                        if col not in self.results.columns or col == "log_dir"
-                    ]
-                ]
-                for df in dfs
-            ]
-            print("dfs = ", filtered_dfs) if self.verbose else None
-            self.merge_results(filtered_dfs)
+        self._sync_results_from_simulations()
 
     def add_profile_data(
         self,
@@ -428,18 +433,7 @@ class SimulationSeries:
             )
             for log_dir in self.log_dirs
         ]
-        dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
-        filtered_dfs = [
-            df[
-                [
-                    col
-                    for col in df.columns
-                    if col not in self.results.columns or col == "log_dir"
-                ]
-            ]
-            for df in dfs
-        ]
-        self.merge_results(filtered_dfs)
+        self._sync_results_from_simulations()
 
     # TODO: Adjust to new method in Simulation
     def add_profile_data_at_condition(
@@ -475,18 +469,7 @@ class SimulationSeries:
             )
             for log_dir in self.log_dirs
         ]
-        dfs = [self.simulations[log_dir].results for log_dir in self.log_dirs]
-        filtered_dfs = [
-            df[
-                [
-                    col
-                    for col in df.columns
-                    if col not in self.results.columns or col == "log_dir"
-                ]
-            ]
-            for df in dfs
-        ]
-        self.merge_results(filtered_dfs)
+        self._sync_results_from_simulations()
 
     def get_relative_difference_of_two_simulations(
         self,
@@ -649,6 +632,28 @@ class SimulationSeries:
     # -------- Plot Results -------- #
     # ------------------------------ #
 
+    def _plot_series(
+        self,
+        method_name: str,
+        *args,
+        fig: plt.Figure | None = None,
+        ax: Axes | None = None,
+        **kwargs,
+    ) -> Tuple[plt.Figure, Axes]:
+        """Helper to plot a quantity for all simulations in the series."""
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for i, sim in enumerate(self.simulations.values()):
+            getattr(sim, method_name)(
+                *args,
+                fig=fig,
+                ax=ax,
+                **_get_kwargs_for_index(kwargs, i),
+            )
+
+        return fig, ax
+
     def profile_plot(
         self,
         x: str,
@@ -684,22 +689,17 @@ class SimulationSeries:
         Tuple[plt.Figure, Axes]
             The figure and the axes.
         """
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for i, (log_key, sim) in enumerate(self.simulations.items()):
-            sim.profile_plot(
-                x,
-                y,
-                model_number=model_number,
-                profile_number=profile_number,
-                fig=fig,
-                ax=ax,
-                set_label=set_label,
-                **_get_kwargs_for_index(kwargs, i),
-            )
-
-        return fig, ax
+        return self._plot_series(
+            "profile_plot",
+            x,
+            y,
+            model_number=model_number,
+            profile_number=profile_number,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            **kwargs,
+        )
 
     def history_plot(
         self,
@@ -746,22 +746,17 @@ class SimulationSeries:
             The figure and axes of the plot.
 
         """
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for i, (log_key, sim) in enumerate(self.simulations.items()):
-            sim.history_plot(
-                x,
-                y,
-                fig=fig,
-                ax=ax,
-                set_label=set_label,
-                filter_x=filter_x,
-                filter_y=filter_y,
-                **_get_kwargs_for_index(kwargs, i),
-            )
-
-        return fig, ax
+        return self._plot_series(
+            "history_plot",
+            x,
+            y,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
     def history_composition_plot(
         self,
@@ -800,25 +795,19 @@ class SimulationSeries:
             A function that filters the y-values. The default is None.
 
         """
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for i, sim in enumerate(self.simulations.values()):
-            sim.history_composition_plot(
-                x,
-                y,
-                function_x=function_x,
-                function_y=function_y,
-                fig=fig,
-                ax=ax,
-                set_label=set_label,
-                filter_x=filter_x,
-                filter_y=filter_y,
-                **_get_kwargs_for_index(kwargs, i),
-            )
-
-        return fig, ax
+        return self._plot_series(
+            "history_composition_plot",
+            x,
+            y,
+            function_x=function_x,
+            function_y=function_y,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
     def history_ratio_plot(
         self,
@@ -856,25 +845,19 @@ class SimulationSeries:
         filter_y_denominator : Callable | None, optional
             A function that filters the y_denominator-values. The default is None.
         """
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for i, sim in enumerate(self.simulations.values()):
-            sim.history_ratio_plot(
-                x,
-                y_numerator,
-                y_denominator,
-                fig=fig,
-                ax=ax,
-                set_label=set_label,
-                filter_x=filter_x,
-                filter_y_numerator=filter_y_numerator,
-                filter_y_denominator=filter_y_denominator,
-                **_get_kwargs_for_index(kwargs, i),
-            )
-
-        return fig, ax
+        return self._plot_series(
+            "history_ratio_plot",
+            x,
+            y_numerator,
+            y_denominator,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            filter_x=filter_x,
+            filter_y_numerator=filter_y_numerator,
+            filter_y_denominator=filter_y_denominator,
+            **kwargs,
+        )
 
     def profile_composition_plot(
         self,
@@ -922,28 +905,22 @@ class SimulationSeries:
             A function that filters the y-values. The default is None.
 
         """
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for i, sim in enumerate(self.simulations.values()):
-            sim.profile_composition_plot(
-                x=x,
-                y=y,
-                model_number=model_number,
-                profile_number=profile_number,
-                function_x=function_x,
-                function_y=function_y,
-                fig=fig,
-                ax=ax,
-                set_label=set_label,
-                set_axes_labels=set_axes_labels,
-                filter_x=filter_x,
-                filter_y=filter_y,
-                **_get_kwargs_for_index(kwargs, i),
-            )
-
-        return fig, ax
+        return self._plot_series(
+            "profile_composition_plot",
+            x=x,
+            y=y,
+            model_number=model_number,
+            profile_number=profile_number,
+            function_x=function_x,
+            function_y=function_y,
+            fig=fig,
+            ax=ax,
+            set_label=set_label,
+            set_axes_labels=set_axes_labels,
+            filter_x=filter_x,
+            filter_y=filter_y,
+            **kwargs,
+        )
 
     def relative_difference_of_two_simulations_plot(
         self,
@@ -1024,21 +1001,15 @@ class SimulationSeries:
         **kwargs,
     ):
         """Plots a sequence of mean profile values with (x, y) as the axes."""
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        for i, (log_key, sim) in enumerate(self.simulations.items()):
-            sim.mean_profile_sequence_plot(
-                x,
-                y,
-                q0,
-                q1,
-                fig=fig,
-                ax=ax,
-                model_numbers=model_numbers,
-                profile_numbers=profile_numbers,
-                **_get_kwargs_for_index(kwargs, i),
-            )
-
-        return fig, ax
+        return self._plot_series(
+            "mean_profile_sequence_plot",
+            x,
+            y,
+            q0,
+            q1,
+            fig=fig,
+            ax=ax,
+            model_numbers=model_numbers,
+            profile_numbers=profile_numbers,
+            **kwargs,
+        )

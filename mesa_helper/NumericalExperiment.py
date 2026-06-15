@@ -2,11 +2,14 @@ from mesa_helper.Inlist import Inlist
 from mesa_helper.Rn import Rn
 import os
 
+
 # TODO: Test this class
 class NumericalExperiment:
     """Modifies rn-files and inlists"""
 
-    def __init__(self, inlist_name: str, rn_name: str, verbose: bool = False, **kwargs) -> None:
+    def __init__(
+        self, inlist_name: str, rn_name: str, verbose: bool = False, **kwargs
+    ) -> None:
         """Initializes inlist and rn-file modifier.
 
         Parameters
@@ -17,8 +20,8 @@ class NumericalExperiment:
             file name of the rn-script
         """
 
-        self.inlist = Inlist(inlist_name, verbose = verbose, **kwargs)
-        self.rn = Rn(rn_name, verbose = verbose, **kwargs)
+        self.inlist = Inlist(inlist_name, verbose=verbose, **kwargs)
+        self.rn = Rn(rn_name, verbose=verbose, **kwargs)
 
     def __enter__(self):
         return self
@@ -96,17 +99,28 @@ class NumericalExperiment:
         """
         if logs_kwargs is None:
             logs_kwargs = {}
-            
-        logs_dir = Inlist.create_logs_path(logs_parent_dir = logs_parent_dir, logs_style = logs_style, series_style = series_style, **logs_kwargs)
+
+        logs_dir = Inlist.create_logs_path(
+            logs_parent_dir=logs_parent_dir,
+            logs_style=logs_style,
+            series_style=series_style,
+            **logs_kwargs
+        )
         options["log_directory"] = logs_dir
 
         # try to get the save_model_filename and change the output path
         # ! Currently, this will produce an error if the save_model_filename neither in the options nor in the inlist
         # ! I need to modify the read_option method to return the default value if the key is not found
         if save_final_model:
-            save_model_filename = options.get("save_model_filename", self.inlist.read_option("save_model_filename"))
-            options["save_model_filename"] = os.path.join(logs_dir, save_model_filename) if save_model_filename else None
+            save_model_filename = options.get(
+                "save_model_filename", self.inlist.read_option("save_model_filename")
+            )
+            options["save_model_filename"] = (
+                os.path.join(logs_dir, save_model_filename)
+                if save_model_filename
+                else None
+            )
 
-
-        self.evolve(do_restart = do_restart, photo = photo, save_inlist = save_inlist, **options)
-
+        self.evolve(
+            do_restart=do_restart, photo=photo, save_inlist=save_inlist, **options
+        )

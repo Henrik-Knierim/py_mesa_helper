@@ -357,6 +357,7 @@ class MathProfile:
         steepness: float = 10,
         f_core: float = 1,
         f_env: float = 0,
+        M_p: float = 1.0,
     ) -> np.ndarray:
         """Sigmoid profile decreasing from f_core to f_env.
 
@@ -377,6 +378,8 @@ class MathProfile:
             Function value in the core (m → -∞). Default is 1.
         f_env : float
             Function value in the envelope (m → +∞). Default is 0.
+        M_p : float
+            Normalization range for the exponent. Default is 1.0.
 
         Returns
         -------
@@ -391,8 +394,10 @@ class MathProfile:
 
         if m_b < 0:
             raise ValueError("m_b needs to be >= 0")
+        if M_p <= 0:
+            raise ValueError("M_p needs to be > 0")
 
-        return f_core - (f_core - f_env) / (1 + np.exp(-steepness * (m - m_b) / m_b))
+        return f_core - (f_core - f_env) / (1 + np.exp(-steepness * (m - m_b) / M_p))
 
     @staticmethod
     def reverse_sigmoid_integral(
@@ -413,19 +418,21 @@ class MathProfile:
         elif not 0 <= f_env <= 1:
             raise ValueError("f_env needs to be between 0 and 1")
 
-        # Analytic edge case: if m_b is zero, the entire profile is envelope.
-        if m_b == 0.0:
-            return M_p * f_env
+        # Analytic edge case: if M_p is zero, the integral is zero.
+        if M_p == 0.0:
+            return 0.0
+
+        # Analytic edge case: if steepness is zero, the profile is constant.
+        if steepness == 0.0:
+            return M_p * 0.5 * (f_core + f_env)
 
         pI = M_p * f_core
+        s = steepness / M_p
 
         # Numerically stable log-term via logaddexp.
-        A = steepness
-        B = steepness * M_p / m_b
+        log_term = np.logaddexp(0.0, s * (M_p - m_b)) - np.logaddexp(0.0, -s * m_b)
 
-        log_term = np.logaddexp(A, B) - np.logaddexp(0.0, A)
-
-        pII = m_b * (f_env - f_core) * log_term / steepness
+        pII = (f_env - f_core) * log_term / s
 
         return pI + pII
 

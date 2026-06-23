@@ -8,6 +8,7 @@ import shutil
 import numpy as np
 import pandas as pd
 from typing import Callable, Tuple
+from concurrent.futures import ThreadPoolExecutor
 from mesa_helper.Simulation import Simulation
 from mesa_helper.utils import sort_list_by_variable, _get_kwargs_for_index, _is_list_of_options
 
@@ -82,13 +83,17 @@ class SimulationSeries:
         """Initialzes `Simulation` objects for each log directory in the simulation."""
         self.simulations = {}
 
-        for log_dir in self.log_dirs:
+        def init_one(log_dir):
             simulation_path = os.path.join(self.series_dir, log_dir)
-
             if self.verbose:
                 print("_init_Simulation: simulation_dir = ", simulation_path)
+            return log_dir, Simulation(simulation_dir=simulation_path)
 
-            self.simulations[log_dir] = Simulation(simulation_dir=simulation_path)
+        with ThreadPoolExecutor() as executor:
+            results = executor.map(init_one, self.log_dirs)
+
+        for log_dir, sim in results:
+            self.simulations[log_dir] = sim
 
     def add_simulation(
         self,
@@ -386,10 +391,12 @@ class SimulationSeries:
         )
 
         for history_key, key_name in pending_pairs:
-            for log_dir in self.log_dirs:
+            def add_one(log_dir):
                 self.simulations[log_dir].add_history_data(
                     history_key, condition, value, key_name
                 )
+            with ThreadPoolExecutor() as executor:
+                executor.map(add_one, self.log_dirs)
 
         self._sync_results_from_simulations()
 
@@ -416,7 +423,7 @@ class SimulationSeries:
                 else kind + "_" + "_".join(keys)
             )
 
-        [
+        def add_one(log_dir):
             self.simulations[log_dir].add_profile_data(
                 keys=keys,
                 dx_key=dx_key,
@@ -431,44 +438,78 @@ class SimulationSeries:
                 unit=unit,
                 **kwargs,
             )
-            for log_dir in self.log_dirs
-        ]
+
+        with ThreadPoolExecutor() as executor:
+            executor.map(add_one, self.log_dirs)
         self._sync_results_from_simulations()
 
-    # TODO: Adjust to new method in Simulation
     def add_profile_data_at_condition(
         self,
-        quantity: str,
+        quantity: str | list,
         condition: str,
-        value: float,
+        value: float | int,
         profile_number: int = -1,
+        kind: str | None = None,
+        dx_key: str | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
         name: str | None = None,
+        unit: str | float | None = None,
+        **kwargs,
     ) -> None:
-        """Adds `quantity` to `self.results` where `condition` is closest to `value` of the specified `profile_number`.
+        """Adds `quantity` to `self.results` where `condition` is closest to `value`.
 
         Parameters
         ----------
-        quantity : str
-            The quantity to add to `self.results`.
+        quantity : str | list
+            The quantity to add to `self.results`. Can either be a string or a list of strings.
         condition : str
             The condition that should be closest to `value`.
-        value : float
+        value : float | int
             The value that the condition should be closest to.
         profile_number : int, optional
             The profile number. The default is -1.
+        kind : str, optional
+            The kind of function to apply (e.g. 'integrate', 'mean', or None).
+        dx_key : str | None, optional
+            The key to use for integration.
+        function_x : Callable | None, optional
+            Function to apply to the independent variable.
+        function_y : Callable | None, optional
+            Function to apply to the keys.
+        filter_x : Callable | list[Callable] | None, optional
+            Filters to apply to the independent variable.
+        filter_y : Callable | list[Callable] | None, optional
+            Filters to apply to the keys.
         name : str, optional
             The name of the quantity in `self.results`. The default is None.
+        unit : str | float | None, optional
+            The unit of the integrated quantity.
+        **kwargs : dict
+            Additional arguments for MesaProfileData.
         """
 
-        if name is None:
-            name = f"{quantity}_at_{condition}_{value}"
-
-        [
+        def add_one(log_dir):
             self.simulations[log_dir].add_profile_data_at_condition(
-                quantity, condition, value, profile_number, name
+                quantity=quantity,
+                condition=condition,
+                value=value,
+                profile_number=profile_number,
+                kind=kind,
+                dx_key=dx_key,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                name=name,
+                unit=unit,
+                **kwargs,
             )
-            for log_dir in self.log_dirs
-        ]
+
+        with ThreadPoolExecutor() as executor:
+            executor.map(add_one, self.log_dirs)
         self._sync_results_from_simulations()
 
     def get_relative_difference_of_two_simulations(

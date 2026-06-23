@@ -123,6 +123,44 @@ class TestSimulationSeries(unittest.TestCase):
         self.assertEqual(lines[1].get_color(), [1.0, 0.0, 0.0])
         self.assertEqual(lines[0].get_linestyle(), lines[1].get_linestyle())
 
+    def test_add_profile_data_at_condition(self):
+        """Tests SimulationSeries.add_profile_data_at_condition (both Case A and Case B)."""
+        series = SimulationSeries(series_dir="tests/LOGS")
+        
+        # 1. Test grid point selection (Case A)
+        series.add_profile_data_at_condition(
+            quantity="mass",
+            condition="zone",
+            value=1,
+            profile_number=1,
+            name="mass_zone_1"
+        )
+        self.assertIn("mass_zone_1", series.results.columns)
+        self.assertEqual(len(series.results), 2)
+        
+        # 2. Test profile selection + reduction (Case B)
+        series.add_profile_data_at_condition(
+            quantity="mass_Jup",
+            condition="star_age",
+            value=1e4,
+            kind="integrate",
+            unit="M_Jup",
+            name="integrated_mass_Jup_1e4"
+        )
+        self.assertIn("integrated_mass_Jup_1e4", series.results.columns)
+        
+        # 3. Test profile selection + mean + filter
+        import numpy as np
+        series.add_profile_data_at_condition(
+            quantity="entropy",
+            condition="star_age",
+            value=1e4,
+            kind="mean",
+            filter_x=lambda dm: np.cumsum(dm) > 0.0,
+            name="mean_entropy_filtered_1e4"
+        )
+        self.assertIn("mean_entropy_filtered_1e4", series.results.columns)
+
 
 if __name__ == "__main__":
     unittest.main()

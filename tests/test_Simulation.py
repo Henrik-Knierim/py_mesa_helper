@@ -195,10 +195,46 @@ class TestSimulation(unittest.TestCase):
         comparison = pd.read_csv("tests/export_profile_comparison.csv")
         exported = pd.read_csv("tests/export_profile.csv")
 
-        # remove the exported file
-        os.remove("tests/export_profile.csv")
-
         self.assertTrue(comparison.equals(exported))
+
+    def test_add_profile_data_at_condition_case_a(self):
+        """Tests grid point selection (Case A) in add_profile_data_at_condition."""
+        self.sim.results = pd.DataFrame({"log_dir": [self.sim.sim]})
+        self.sim.add_profile_data_at_condition(
+            quantity="mass", condition="zone", value=1, profile_number=1, name="mass_at_zone_1"
+        )
+        self.assertIn("mass_at_zone_1", self.sim.results.columns)
+        self.assertAlmostEqual(self.sim.results["mass_at_zone_1"].values[0], 9.5459960393944109e-004)
+
+    def test_add_profile_data_at_condition_case_b(self):
+        """Tests profile selection and reduction (Case B) in add_profile_data_at_condition."""
+        self.sim.results = pd.DataFrame({"log_dir": [self.sim.sim]})
+        
+        # Integrate with condition 'star_age' matching profile 1
+        self.sim.add_profile_data_at_condition(
+            quantity="mass_Jup",
+            condition="star_age",
+            value=1.1e2,
+            kind="integrate",
+            unit="M_Jup",
+            name="int_mass_star_age_1e2"
+        )
+        direct_integrated = self.sim.integrate("mass_Jup", profile_number=1, unit="M_Jup")
+        self.assertIn("int_mass_star_age_1e2", self.sim.results.columns)
+        self.assertAlmostEqual(self.sim.results["int_mass_star_age_1e2"].values[0], direct_integrated)
+
+        # Mean with condition 'star_age' and filter
+        self.sim.add_profile_data_at_condition(
+            quantity="entropy",
+            condition="star_age",
+            value=1.1e2,
+            kind="mean",
+            filter_x=lambda dm: np.cumsum(dm) > 0.0,
+            name="mean_entropy_filtered"
+        )
+        direct_mean = self.sim.mean("entropy", profile_number=1, filter_x=lambda dm: np.cumsum(dm) > 0.0)
+        self.assertIn("mean_entropy_filtered", self.sim.results.columns)
+        self.assertAlmostEqual(self.sim.results["mean_entropy_filtered"].values[0], direct_mean)
 
 
 if __name__ == "__main__":

@@ -712,26 +712,153 @@ class Simulation:
 
         return profile.data(quantity)[index]
 
+    def get_profile_number_at_profile_header_condition(
+        self, condition: str, value: float | int, **kwargs
+    ) -> int:
+        """Returns the profile number where the profile header `condition` is closest to `value`."""
+        if not hasattr(self, "profile_header_df"):
+            self._create_profile_header_df(condition, **kwargs)
+        elif condition not in self.profile_header_df.columns:
+            self._create_profile_header_df(condition, **kwargs)
+
+        profile_number = self._clostest_quantity(
+            self.profile_header_df, "profile_number", condition, value
+        )
+        return int(profile_number)
+
+    def get_profile_number_at_condition(
+        self,
+        condition: str,
+        value: float | int,
+        **kwargs,
+    ) -> int:
+        """Returns the profile number where `condition` is closest to `value`.
+
+        Parameters
+        ----------
+        condition : str
+            The condition (either profile header key, history key, 'profile_number', or 'model_number')
+            that should be closest to `value`.
+        value : float | int
+            The target value.
+        **kwargs : dict
+            Keyword arguments for MesaProfileData.
+        """
+        # Throw an error if value is a bool or a string
+        if isinstance(value, (bool, str)):
+            raise ValueError("value must be a float or an integer.")
+
+        if len(self.log.profile_numbers) == 0:
+            raise ValueError("No profiles found in this simulation.")
+
+        if condition == "profile_number":
+            profile_number = int(value)
+            if profile_number < 0:
+                profile_number = self.log.profile_numbers[profile_number]
+            return profile_number
+
+        if condition == "model_number":
+            model_number = int(value)
+            if model_number < 0:
+                model_number = self.log.model_numbers[model_number]
+            # Find the closest model number that has a profile
+            model_numbers = self.log.model_numbers
+            closest_model = model_numbers[np.argmin(np.abs(model_numbers - model_number))]
+            return self.log.profile_with_model_number(closest_model)
+
+        # Check if condition is in history first (avoiding slow disk I/O of loading profiles)
+        if self.history.in_data(condition):
+            quantities = self.history.data(condition)
+            index = np.argmin(np.abs(quantities - value))
+            closest_model_number = self.history.model_number[index]
+            model_numbers = self.log.model_numbers
+            closest_model = model_numbers[np.argmin(np.abs(model_numbers - closest_model_number))]
+            return self.log.profile_with_model_number(closest_model)
+
+        # Check if condition is in the first profile header
+        try:
+            profile = self.log.profile_data(profile_number=self.log.profile_numbers[0], **kwargs)
+            is_header = condition in profile.header_data
+        except Exception:
+            is_header = False
+
+        if is_header:
+            return self.get_profile_number_at_profile_header_condition(condition, value, **kwargs)
+
+        # If neither, raise error
+        raise ValueError(f"Condition '{condition}' not found in profile header or history.")
+
     def add_profile_data_at_condition(
         self,
-        quantity: str,
+        quantity: str | list,
         condition: str,
-        value: float,
+        value: float | int,
         profile_number: int = -1,
-        name=None,
+        kind: str | None = None,
+        dx_key: str | None = None,
+        function_x: Callable | None = None,
+        function_y: Callable | None = None,
+        filter_x: Callable | list[Callable] | None = None,
+        filter_y: Callable | list[Callable] | None = None,
+        name: str | None = None,
+        unit: str | float | None = None,
         **kwargs,
     ) -> None:
-        """Adds `quantity` to `self.results` where `condition` is closest to `value` of the specified `profile_number`."""
+        """Adds `quantity` to `self.results` where `condition` is closest to `value`."""
 
-        if name is None:
-            name = f"{quantity}_at_{condition}_{value}"
+        # Check if condition is in the profile columns
+        p_num = profile_number
+        if p_num == -1 and len(self.log.profile_numbers) > 0:
+            p_num = self.log.profile_numbers[-1]
 
-        out = [
-            self.get_profile_data_at_condition(
-                quantity, condition, value, profile_number=profile_number, **kwargs
+        is_profile_column = False
+        if len(self.log.profile_numbers) > 0 and p_num in self.log.profile_numbers:
+            try:
+                profile = self.log.profile_data(profile_number=p_num, **kwargs)
+                is_profile_column = profile.in_data(condition)
+            except Exception:
+                pass
+
+        is_reduction = (
+            kind is not None
+            or dx_key is not None
+            or function_x is not None
+            or function_y is not None
+            or filter_x is not None
+            or filter_y is not None
+            or unit is not None
+            or not is_profile_column
+        )
+
+        if is_reduction:
+            target_profile_number = self.get_profile_number_at_condition(
+                condition, value, **kwargs
             )
-        ]
-        self.results[name] = out
+            if kind is None:
+                kind = "integrate"
+            self.add_profile_data(
+                keys=quantity,
+                dx_key=dx_key,
+                profile_number=target_profile_number,
+                kind=kind,
+                function_x=function_x,
+                function_y=function_y,
+                filter_x=filter_x,
+                filter_y=filter_y,
+                name=name,
+                unit=unit,
+                **kwargs,
+            )
+        else:
+            if name is None:
+                name = f"{quantity}_at_{condition}_{value}"
+
+            out = [
+                self.get_profile_data_at_condition(
+                    quantity, condition, value, profile_number=profile_number, **kwargs
+                )
+            ]
+            self.results[name] = out
 
     @lru_cache
     def _create_profile_header_df(self, quantity: str, **kwargs) -> None:
@@ -746,18 +873,20 @@ class Simulation:
         if not hasattr(self, "profile_header_df"):
             self.profile_header_df = pd.DataFrame()
             # always initialize the header with the model numbers
-            model_numbers = [
-                self.log.profile_data(profile_number=i, **kwargs).header_data[
-                    "model_number"
-                ]
+            self.profile_header_df["model_number"] = self.log.model_numbers
+            self.profile_header_df["profile_number"] = self.log.profile_numbers
+
+        # Try to retrieve from history first (extremely fast), otherwise fall back to loading profiles
+        if self.history.in_data(quantity):
+            data = [
+                self.history.data_at_model_number(quantity, m)
+                for m in self.log.model_numbers
+            ]
+        else:
+            data = [
+                self.log.profile_data(profile_number=i, **kwargs).header_data[quantity]
                 for i in self.log.profile_numbers
             ]
-            self.profile_header_df["model_number"] = model_numbers
-
-        data = [
-            self.log.profile_data(profile_number=i, **kwargs).header_data[quantity]
-            for i in self.log.profile_numbers
-        ]
 
         self.profile_header_df[quantity] = data
 
@@ -1896,7 +2025,7 @@ class Simulation:
         if model_numbers != [-1]:
             for i in model_numbers:
                 label = (
-                    self.log.profile_data(model_number=i).header_data["star_age"]
+                    self.history.data_at_model_number("star_age", i)
                     if set_labels
                     else None
                 )
@@ -1918,7 +2047,7 @@ class Simulation:
         elif profile_numbers != [-1]:
             for i in profile_numbers:
                 label = (
-                    self.log.profile_data(profile_number=i).header_data["star_age"]
+                    self.history.data_at_model_number("star_age", self.log.model_with_profile_number(i))
                     if set_labels
                     else None
                 )

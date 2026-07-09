@@ -145,6 +145,67 @@ class TestReverseSigmoidProfile(unittest.TestCase):
         self.assertTrue(np.all(diffs <= 0), "Should be monotonically decreasing")
 
 
+class TestReverseSigmoidIntegral(unittest.TestCase):
+    """Tests for vectorized reverse_sigmoid_integral."""
+
+    def test_scalar_matches_known_value(self):
+        """Test a known scalar case against an analytically verified value."""
+        result = MathProfile.reverse_sigmoid_integral(
+            M_p=2.0, m_b=1.0, steepness=10, f_core=1.0, f_env=0.0
+        )
+        # The function should return a scalar-like value.
+        self.assertIsInstance(float(result), float)
+        # For these params the integral should be close to m_b = 1.0
+        # (the sigmoid splits the planet roughly in half).
+        self.assertAlmostEqual(float(result), 1.0, places=1)
+
+    def test_batch_matches_scalar_loop(self):
+        """Call with arrays of length 100 and verify each element matches the scalar call."""
+        rng = np.random.default_rng(42)
+        n = 100
+        M_p = rng.uniform(0.1, 10.0, n)
+        m_b = rng.uniform(0.0, 5.0, n)
+        steepness = rng.uniform(1.0, 50.0, n)
+        f_core = rng.uniform(0.0, 1.0, n)
+        f_env = rng.uniform(0.0, 1.0, n)
+
+        batch_result = MathProfile.reverse_sigmoid_integral(
+            M_p=M_p, m_b=m_b, steepness=steepness, f_core=f_core, f_env=f_env
+        )
+
+        for i in range(n):
+            scalar_result = MathProfile.reverse_sigmoid_integral(
+                M_p=M_p[i], m_b=m_b[i], steepness=steepness[i],
+                f_core=f_core[i], f_env=f_env[i],
+            )
+            np.testing.assert_allclose(
+                batch_result[i], float(scalar_result), rtol=1e-12,
+                err_msg=f"Mismatch at index {i}",
+            )
+
+    def test_edge_case_zero_M_p(self):
+        """Test that M_p=0 returns 0 even when mixed into an array."""
+        M_p = np.array([0.0, 1.0, 2.0])
+        m_b = np.array([0.5, 0.5, 0.5])
+        result = MathProfile.reverse_sigmoid_integral(M_p=M_p, m_b=m_b)
+        self.assertEqual(result[0], 0.0)
+        # Other elements should be finite and non-zero.
+        self.assertTrue(np.all(np.isfinite(result)))
+        self.assertNotEqual(result[1], 0.0)
+
+    def test_edge_case_zero_steepness(self):
+        """Test that steepness=0 gives M_p * 0.5 * (f_core + f_env)."""
+        M_p = np.array([1.0, 2.0, 3.0])
+        m_b = np.array([0.5, 1.0, 1.5])
+        f_core = 0.8
+        f_env = 0.2
+        result = MathProfile.reverse_sigmoid_integral(
+            M_p=M_p, m_b=m_b, steepness=0.0, f_core=f_core, f_env=f_env
+        )
+        expected = M_p * 0.5 * (f_core + f_env)
+        np.testing.assert_allclose(result, expected)
+
+
 class TestTransitionFunctions(unittest.TestCase):
     """Tests for transition functions."""
 

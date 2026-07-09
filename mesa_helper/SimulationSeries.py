@@ -100,7 +100,19 @@ class SimulationSeries:
         simulation_dir: str | list[str],
         log_dir: str | list[str] | None = None,
     ) -> None:
-        """Adds one or multiple simulations from full simulation directory paths."""
+        """Adds one or multiple simulations from full simulation directory paths.
+
+        Parameters
+        ----------
+        simulation_dir : str | list[str]
+            Path to the simulation directory or list of paths.
+        log_dir : str | list[str] | None, optional
+            The custom name(s) for the logs. If None, the directory basename is used.
+
+        Examples
+        --------
+        >>> series.add_simulation('tests/LOGS/test_planet_1')
+        """
 
         simulation_dirs = (
             [simulation_dir] if isinstance(simulation_dir, str) else simulation_dir
@@ -362,6 +374,10 @@ class SimulationSeries:
             The value that the quantity should be closest to. The default is -1.
         key_names : str | list[str] | None, optional
             The names of the results columns. If None, then the history keys are used. The default is None.
+
+        Examples
+        --------
+        >>> series.add_history_data('star_age', condition='model_number', value=100)
         """
 
         if isinstance(history_keys, str):
@@ -415,7 +431,39 @@ class SimulationSeries:
         unit: str | float | None = None,
         **kwargs,
     ):
-        """Computes the integrated quantity from q0 to q1 and adds it to `self.results`."""
+        """Computes the integrated/mean/custom profile quantity and adds it to `self.results`.
+
+        Parameters
+        ----------
+        keys : str | list
+            The profile key(s) to process.
+        dx_key : str | None, optional
+            The integration coordinate variable. Defaults to 'dm'.
+        model_number : int, optional
+            The model number. The default is -1.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        kind : str, optional
+            The reduction kind: 'integrate', 'mean', or None. Defaults to 'integrate'.
+        function_x : Callable | None, optional
+            Function to apply to the independent variable.
+        function_y : Callable | None, optional
+            Function to apply to the keys.
+        filter_x : Callable | list[Callable] | None, optional
+            Filters to apply to the independent variable.
+        filter_y : Callable | list[Callable] | None, optional
+            Filters to apply to the keys.
+        name : str, optional
+            The name of the results column.
+        unit : str | float | None, optional
+            The unit of the integrated quantity.
+        **kwargs : dict
+            Additional arguments.
+
+        Examples
+        --------
+        >>> series.add_profile_data('mass_Jup', kind='integrate', unit='M_Jup', name='mass')
+        """
         if name is None:
             name = (
                 kind + "_" + keys
@@ -459,12 +507,17 @@ class SimulationSeries:
         unit: str | float | None = None,
         **kwargs,
     ) -> None:
-        """Adds `quantity` to `self.results` where `condition` is closest to `value`.
+        """Adds processed profile data to `self.results` where `condition` is closest to `value`.
+
+        Description
+        -----------
+        Executes `add_profile_data_at_condition` in parallel across all simulations in the series
+        and aggregates the results.
 
         Parameters
         ----------
         quantity : str | list
-            The quantity to add to `self.results`. Can either be a string or a list of strings.
+            The key(s) to process. Can either be a string or a list of strings.
         condition : str
             The condition that should be closest to `value`.
         value : float | int
@@ -489,6 +542,27 @@ class SimulationSeries:
             The unit of the integrated quantity.
         **kwargs : dict
             Additional arguments for MesaProfileData.
+
+        Examples
+        --------
+        Case A: Extracting a point value (e.g., entropy at radius = 0.5 inside profile 1)
+        >>> series.add_profile_data_at_condition(
+        ...     quantity='entropy',
+        ...     condition='radius',
+        ...     value=0.5,
+        ...     profile_number=1,
+        ...     name='entropy_at_r_0.5'
+        ... )
+
+        Case B: Select profile by star_age and compute mean entropy for outer regions
+        >>> series.add_profile_data_at_condition(
+        ...     quantity='entropy',
+        ...     condition='star_age',
+        ...     value=1e4,
+        ...     kind='mean',
+        ...     filter_x=lambda dm: np.cumsum(dm) > 0.9 * M_Jup_in_g,
+        ...     name='entropy_core'
+        ... )
         """
 
         def add_one(log_dir):
@@ -729,6 +803,10 @@ class SimulationSeries:
         -------
         Tuple[plt.Figure, Axes]
             The figure and the axes.
+
+        Examples
+        --------
+        >>> series.profile_plot('radius', 'temperature', profile_number=1)
         """
         return self._plot_series(
             "profile_plot",
@@ -759,25 +837,18 @@ class SimulationSeries:
         ----------
         x : str
             The x-axis of the history data.
-
         y : str
             The y-axis of the history data.
-
         fig : plt.Figure, optional
             The figure. The default is None.
-
         ax : Axes, optional
             The axes. The default is None. If None, a new figure is created.
-
         set_label : bool, optional
             If true, add label to plot, by default False
-
         filter_x : Callable | None, optional
             A function that filters the x-values. The default is None.
-
         filter_y : Callable | None, optional
             A function that filters the y-values. The default is None.
-
         **kwargs : dict
             Keyword arguments for `matplotlib.pyplot.plot`.
 
@@ -786,8 +857,11 @@ class SimulationSeries:
         Tuple[plt.Figure, Axes]
             The figure and axes of the plot.
 
+        Examples
+        --------
+        >>> series.history_plot('star_age', 'Teff', filter_x=lambda x: x < 1e7)
         """
-        return self._plot_series(
+        fig, ax = self._plot_series(
             "history_plot",
             x,
             y,
@@ -798,6 +872,8 @@ class SimulationSeries:
             filter_y=filter_y,
             **kwargs,
         )
+
+        return fig, ax
 
     def history_composition_plot(
         self,

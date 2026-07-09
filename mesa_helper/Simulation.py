@@ -455,23 +455,27 @@ class Simulation:
         Parameters
         ----------
         keys : str | list
-            The keys to compute the mean of.
+            The keys to integrate.
+        dx_key : str | None, optional
+            The differential coordinate variable. Defaults to 'dm' for profiles and 'star_age' for histories.
         model_number : int, optional
             The model number. The default is -1.
         profile_number : int, optional
             The profile number. The default is -1.
         unit : str | float | None, optional
-            The unit of the integrated quantity. The default is None. If None, then the unit is not changed. If a string, then the unit is converted to the specified unit. If a float, then the result is devided by the float.
+            The unit of the integrated quantity. If a string, then the unit is converted. If a float, then the result is divided by the float.
         function_x : Callable | None, optional
-            The function to apply to the variable that is integrated. The default is None.
+            The function to apply to the differential coordinate. The default is None.
         function_y : Callable | None, optional
             The function to apply to `keys`. The default is None.
         filter_x : Callable | list[Callable] | None, optional
-            The filter for the variable that is integrated. The default is None.
+            The filter for the differential coordinate. The default is None.
         filter_y : Callable | list[Callable] | None, optional
             The filter for `keys`. The default is None.
         kind : str, optional
             The kind of data to use. The default is 'profile'. The other option is 'history'.
+        **kwargs : dict
+            Additional arguments.
 
         Returns
         -------
@@ -482,6 +486,11 @@ class Simulation:
         ------
         ValueError
             If `kind` is not 'profile' or 'history'.
+
+        Examples
+        --------
+        >>> sim.integrate('mass_Jup', unit='M_Jup')
+        0.5
         """
 
         f_masked, dx_masked = self._get_f_and_dx(
@@ -521,15 +530,17 @@ class Simulation:
         profile_number : int, optional
             The profile number. The default is -1.
         function_x : Callable | None, optional
-            The function to apply to the variable that is integrated. The default is None.
+            The function to apply to the independent variable. The default is None.
         function_y : Callable | None, optional
             The function to apply to `keys`. The default is None.
         filter_x : Callable | list[Callable] | None, optional
-            The filter for the variable that is integrated. The default is None.
+            The filter for the independent variable. The default is None.
         filter_y : Callable | list[Callable] | None, optional
             The filter for `keys`. The default is None.
         kind : str, optional
             The kind of data to use. The default is 'profile'. The other option is 'history'.
+        **kwargs : dict
+            Additional arguments.
 
         Returns
         -------
@@ -546,7 +557,7 @@ class Simulation:
         >>> sim.mean('entropy')
         # returns the mean of the entropy for the last profile
         >>> sim.mean(['x', 'y'], function_y = lambda x, y: 1-x-y, profile_number=1)
-        # returns the mean of Z = 1-X-Y for the first  profile
+        # returns the mean of Z = 1-X-Y for the first profile
         """
 
         dx_key = "dm" if kind == "profile" else "star_age"
@@ -586,26 +597,34 @@ class Simulation:
         ----------
         keys : str | list
             The keys that are input to the function.
+        dx_key : str | None, optional
+            The differential coordinate variable. Defaults to 'dm'.
         model_number : int, optional
             The model number. The default is -1.
         profile_number : int, optional
             The profile number. The default is -1.
         kind : str, optional
-            The kind of function to apply to the keys. If 'integrate', the keys are integrated. If 'mean', the keys are averaged. If None, then function_y is applied directly to the keys. The default is 'integrate'.
+            The kind of function to apply to the keys. If 'integrate', the keys are integrated.
+            If 'mean', the keys are averaged. If None, then function_y is applied directly.
+            The default is 'integrate'.
         function_x : Callable | None, optional
-            The function to apply to the variable that is either integrated or used to compute the mean. If kind is neither 'integrate' nor 'mean', then function_x is not used. The default is None.
+            The function to apply to the independent variable. The default is None.
         function_y : Callable | str | None, optional
             The function to apply to the keys. The default is None.
         filter_x : Callable | list[Callable] | None, optional
-            The filter for the variable that is is either integrated or used to compute the mean. If kind is neither 'integrate' nor 'mean', then filter_x is not used. The default is None.
+            The filter for the independent variable. The default is None.
         filter_y : Callable | list[Callable] | None, optional
             The filter for the keys. The default is None.
         name : str | None, optional
             The name of the results column. The default is None.
         unit : str | float | None, optional
-            The unit of the integrated quantity. The default is None. If None, then the unit is not changed. If a string, then the unit is converted to the specified unit. If a float, then the result is devided by the float. If function is not 'integrate', then the unit is not used.
+            The unit of the integrated quantity.
         **kwargs : dict
-            Keyword arguments for the function.
+            Additional arguments.
+
+        Examples
+        --------
+        >>> sim.add_profile_data('mass_Jup', kind='integrate', unit='M_Jup', name='mass')
         """
 
         # * tests
@@ -690,16 +709,26 @@ class Simulation:
 
         Parameters
         ----------
-        quantity: str
+        quantity : str
             The key to the profile data that we want to retrieve.
         condition : str
             The quantity that should be closest to `value`.
-        value : float
+        value : float | int
             The value that the quantity should be closest to.
         profile_number : int, optional
             The profile number. The default is -1.
         **kwargs : dict
             Keyword arguments for `MesaProfileData`.
+
+        Returns
+        -------
+        np.float64 | int
+            The profile data value at the condition index.
+
+        Examples
+        --------
+        >>> sim.get_profile_data_at_condition(quantity='mass', condition='zone', value=1, profile_number=1)
+        9.545996e-04
         """
 
         # throw an error if value is a bool or a string
@@ -715,7 +744,27 @@ class Simulation:
     def get_profile_number_at_profile_header_condition(
         self, condition: str, value: float | int, **kwargs
     ) -> int:
-        """Returns the profile number where the profile header `condition` is closest to `value`."""
+        """Returns the profile number where the profile header `condition` is closest to `value`.
+
+        Parameters
+        ----------
+        condition : str
+            The profile header key that should be closest to `value`.
+        value : float | int
+            The target value for the header condition.
+        **kwargs : dict
+            Additional arguments for MesaProfileData.
+
+        Returns
+        -------
+        int
+            The profile number matching the condition.
+
+        Examples
+        --------
+        >>> sim.get_profile_number_at_profile_header_condition("star_age", 1e4)
+        2
+        """
         if not hasattr(self, "profile_header_df"):
             self._create_profile_header_df(condition, **kwargs)
         elif condition not in self.profile_header_df.columns:
@@ -743,6 +792,23 @@ class Simulation:
             The target value.
         **kwargs : dict
             Keyword arguments for MesaProfileData.
+
+        Returns
+        -------
+        int
+            The profile number matching the condition.
+
+        Raises
+        ------
+        ValueError
+            If value is a boolean or string, if no profiles exist, or if the condition is not found.
+
+        Examples
+        --------
+        >>> sim.get_profile_number_at_condition("star_age", 1e4)
+        2
+        >>> sim.get_profile_number_at_condition("model_number", 100)
+        8
         """
         # Throw an error if value is a bool or a string
         if isinstance(value, (bool, str)):
@@ -804,7 +870,65 @@ class Simulation:
         unit: str | float | None = None,
         **kwargs,
     ) -> None:
-        """Adds `quantity` to `self.results` where `condition` is closest to `value`."""
+        """Adds processed profile data to `self.results` where `condition` is closest to `value`.
+
+        Description
+        -----------
+        Depending on whether the condition is a profile column (like 'radius') or an evolutionary
+        condition (like 'star_age' or 'model_number'), this method either extracts a value at a specific
+        grid point (if no profile reduction is specified and the condition is a profile column),
+        or selects a profile and computes a reduction (integrate, mean, or custom function) over it.
+
+        Parameters
+        ----------
+        quantity : str | list
+            The key(s) to process.
+        condition : str
+            The condition to match.
+        value : float | int
+            The target value for the condition.
+        profile_number : int, optional
+            The profile number to use for grid-point selection. The default is -1.
+        kind : str, optional
+            The kind of function to apply (e.g. 'integrate', 'mean', or None).
+        dx_key : str | None, optional
+            The key to use for integration.
+        function_x : Callable | None, optional
+            Function to apply to the independent variable.
+        function_y : Callable | None, optional
+            Function to apply to the keys.
+        filter_x : Callable | list[Callable] | None, optional
+            Filters to apply to the independent variable.
+        filter_y : Callable | list[Callable] | None, optional
+            Filters to apply to the keys.
+        name : str, optional
+            The name of the column in `self.results`.
+        unit : str | float | None, optional
+            The unit to scale the integrated quantity.
+        **kwargs : dict
+            Additional arguments for MesaProfileData.
+
+        Examples
+        --------
+        Case A: Extracting a point value (e.g., entropy at radius = 0.5 inside profile 1)
+        >>> sim.add_profile_data_at_condition(
+        ...     quantity='entropy',
+        ...     condition='radius',
+        ...     value=0.5,
+        ...     profile_number=1,
+        ...     name='entropy_at_r_0.5'
+        ... )
+
+        Case B: Select profile by star_age and compute mean entropy for outer regions
+        >>> sim.add_profile_data_at_condition(
+        ...     quantity='entropy',
+        ...     condition='star_age',
+        ...     value=1e4,
+        ...     kind='mean',
+        ...     filter_x=lambda dm: np.cumsum(dm) > 0.9 * M_Jup_in_g,
+        ...     name='entropy_core'
+        ... )
+        """
 
         # Check if condition is in the profile columns
         p_num = profile_number
@@ -1540,7 +1664,25 @@ class Simulation:
         filters: Callable | list[Callable] | None = None,
         **kwargs,
     ) -> None:
-        """Exports the quantities in `columns` to a csv file."""
+        """Exports the quantities in `columns` to a csv file.
+
+        Parameters
+        ----------
+        columns : list[str]
+            The history keys to export.
+        filename : str, optional
+            The filename of the csv file. The default is 'history.csv'.
+        functions : Callable | list[Callable] | None, optional
+            Functions to apply to each column. The default is None.
+        filters : Callable | list[Callable] | None, optional
+            Filters to apply to each column. The default is None.
+        **kwargs : dict
+            Keyword arguments for `pd.DataFrame.to_csv`.
+
+        Examples
+        --------
+        >>> sim.export_history_data(columns=['star_age', 'Teff'], filename='out.csv')
+        """
 
         data = {}
         masks = {}
@@ -1579,24 +1721,27 @@ class Simulation:
         ----------
         columns : list[str]
             The columns to be exported.
-        filename : str
-            The filename of the csv file.
+        filename : str, optional
+            The filename of the csv file. The default is 'profile_data.csv'.
         method : str, optional
-            The method to extract the profile data. The default is 'profile_number'. Available options are 'profile_number' and 'profile_header_condition'.
+            The method to extract the profile data. The default is 'index'. Available options are 'index' and 'profile_header_condition'.
             For 'index', the profile data is extracted at the profile number specified by `profile_number` or `model_number`.
             For 'profile_header_condition', the profile data is extracted at the profile number where the profile header `condition` is closest to `value`.
+        model_number : int, optional
+            The model number of the profile. The default is -1.
+        profile_number : int, optional
+            The profile number. The default is -1.
+        condition : str, optional
+            The profile header condition name. The default is None.
+        value : int | float, optional
+            The target value for the profile header condition. The default is None.
         **kwargs : dict
             Keyword arguments for `pd.DataFrame.to_csv`.
-
-        Description
-        -----------
-        The routine loads the profile data of all logs and creates one joint DataFrame where arg_log_key is the column name.
 
         Examples
         --------
         >>> columns = ['mass', 'radius', 'temperature']
-        >>> sim.export_profile_data('profile_data.csv', columns)
-
+        >>> sim.export_profile_data(columns, 'profile_data.csv')
         """
 
         # get the profile data
@@ -1869,17 +2014,17 @@ class Simulation:
         y : str
             The profile quantity for the y-axis.
         model_number : int, optional
-            The model number of the profile, by default -1
+            The model number of the profile, by default -1.
         profile_number : int, optional
-            The profile number, by default -1
+            The profile number, by default -1.
         fig : plt.Figure, optional
             The figure. The default is None.
         ax : Axes, optional
             The axes. The default is None. If None, a new figure is created.
         set_label : bool, optional
-            If true, add label to plot, by default False
+            If true, add label to plot, by default False.
         set_axes_labels : bool, optional
-            If true, tries to set the axis labels automatically, by default False
+            If true, tries to set the axis labels automatically, by default False.
         filter_x : Callable | None, optional
             A function that filters the x-values. The default is None.
         filter_y : Callable | None, optional
@@ -1891,6 +2036,10 @@ class Simulation:
         -------
         Tuple[plt.Figure, Axes]
             The figure and axes of the plot.
+
+        Examples
+        --------
+        >>> sim.profile_plot('radius', 'temperature', profile_number=1)
         """
         fig, ax = self.composition_plot(
             x,

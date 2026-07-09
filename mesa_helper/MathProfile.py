@@ -401,40 +401,57 @@ class MathProfile:
 
     @staticmethod
     def reverse_sigmoid_integral(
-        M_p: float,
-        m_b: float,
-        steepness: float = 10,
-        f_core: float = 1,
-        f_env: float = 0,
-    ) -> float:
-        """Returns the integral of the reverse sigmoid function from 0 to M_p."""
+        M_p: float | np.ndarray,
+        m_b: float | np.ndarray,
+        steepness: float | np.ndarray = 10,
+        f_core: float | np.ndarray = 1,
+        f_env: float | np.ndarray = 0,
+    ) -> float | np.ndarray:
+        """Returns the integral of the reverse sigmoid function from 0 to M_p.
 
-        if M_p < 0:
+        All parameters can be floats or NumPy arrays; they are broadcast
+        together following standard NumPy broadcasting rules.
+        """
+
+        M_p = np.asarray(M_p, dtype=float)
+        m_b = np.asarray(m_b, dtype=float)
+        steepness = np.asarray(steepness, dtype=float)
+        f_core = np.asarray(f_core, dtype=float)
+        f_env = np.asarray(f_env, dtype=float)
+
+        if np.any(M_p < 0):
             raise ValueError("M_p needs to be >= 0")
-        elif m_b < 0:
+        if np.any(m_b < 0):
             raise ValueError("m_b needs to be >= 0")
-        elif not 0 <= f_core <= 1:
+        if np.any((f_core < 0) | (f_core > 1)):
             raise ValueError("f_core needs to be between 0 and 1")
-        elif not 0 <= f_env <= 1:
+        if np.any((f_env < 0) | (f_env > 1)):
             raise ValueError("f_env needs to be between 0 and 1")
 
-        # Analytic edge case: if M_p is zero, the integral is zero.
-        if M_p == 0.0:
-            return 0.0
-
         # Analytic edge case: if steepness is zero, the profile is constant.
-        if steepness == 0.0:
-            return M_p * 0.5 * (f_core + f_env)
+        const_result = M_p * 0.5 * (f_core + f_env)
+
+        # Use a safe denominator to avoid division by zero when M_p == 0
+        # or steepness == 0 (those results are overridden by np.where below).
+        M_p_safe = np.where(M_p == 0.0, 1.0, M_p)
+        steepness_safe = np.where(steepness == 0.0, 1.0, steepness)
 
         pI = M_p * f_core
-        s = steepness / M_p
+        s = steepness_safe / M_p_safe
 
         # Numerically stable log-term via logaddexp.
         log_term = np.logaddexp(0.0, s * (M_p - m_b)) - np.logaddexp(0.0, -s * m_b)
 
         pII = (f_env - f_core) * log_term / s
 
-        return pI + pII
+        general_result = pI + pII
+
+        # Analytic edge case: if M_p is zero, the integral is zero.
+        result = np.where(M_p == 0.0, 0.0, general_result)
+        # Analytic edge case: if steepness is zero, the profile is constant.
+        result = np.where(steepness == 0.0, const_result, result)
+
+        return result
 
     @staticmethod
     def integrate_profile(

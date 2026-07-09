@@ -170,12 +170,12 @@ class CompositionProfiles:
 
     @staticmethod
     def reverse_sigmoid_integral(
-        M_p: float,
-        m_b: float,
-        steepness: float = 100,
-        Z_core: float = 1,
-        Z_env: float = Z_Sol,
-    ) -> float:
+        M_p: float | np.ndarray,
+        m_b: float | np.ndarray,
+        steepness: float | np.ndarray = 100,
+        Z_core: float | np.ndarray = 1,
+        Z_env: float | np.ndarray = Z_Sol,
+    ) -> float | np.ndarray:
         """Returns the integral of the reverse sigmoid profile from 0 to M_p."""
         return MathProfile.reverse_sigmoid_integral(
             M_p=M_p,

@@ -204,3 +204,46 @@ def _integrate(
         normalization: float = normalizations[unit]
 
     return np.dot(f, dx) / normalization
+
+
+def dex_to_mass_fraction(dex_val: float | np.ndarray) -> float | np.ndarray:
+    """
+    Converts a logarithmic [M/H] (dex) value to a linear mass fraction Z.
+    
+    This assumes that the mass fraction of metals scales linearly with the solar mixture,
+    meaning it neglects variations in the mean molecular weight of metals (e.g. non-solar C/O ratios).
+    For a more rigorous calculation accounting for these variations, use thermochemical equilibrium
+    abundances (like the exocomp package).
+    """
+    linear_ratio = 10**np.array(dex_val, dtype=float)
+    return (linear_ratio * Z_Sol) / (X_Sol + Y_Sol + linear_ratio * Z_Sol)
+
+
+def linear_ratio_to_mass_fraction(linear_ratio: float | np.ndarray) -> float | np.ndarray:
+    """
+    Converts a linear number fraction ratio (10^[M/H]) to a linear mass fraction Z.
+    
+    This assumes a solar mixture of heavy elements.
+    """
+    linear_ratio = np.array(linear_ratio, dtype=float)
+    return (linear_ratio * Z_Sol) / (X_Sol + Y_Sol + linear_ratio * Z_Sol)
+
+
+def mass_fraction_to_linear_ratio(Z: float | np.ndarray) -> float | np.ndarray:
+    """
+    Converts a mass fraction Z to the linear number fraction ratio (10^[M/H]).
+    
+    This assumes a solar mixture of heavy elements.
+    """
+    Z = np.clip(np.array(Z, dtype=float), 1e-10, 0.999)
+    return -((X_Sol + Y_Sol) / Z_Sol) * Z / (Z - 1.0)
+
+
+def mass_fraction_to_dex(Z: float | np.ndarray) -> float | np.ndarray:
+    """
+    Converts a mass fraction Z to a logarithmic [M/H] (dex) value.
+    
+    This assumes a solar mixture of heavy elements.
+    """
+    linear_ratio = mass_fraction_to_linear_ratio(Z)
+    return np.log10(np.clip(linear_ratio, 1e-10, None))

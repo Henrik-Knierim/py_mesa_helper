@@ -454,6 +454,45 @@ class MathProfile:
         return result
 
     @staticmethod
+    def inverse_reverse_sigmoid_integral(
+        M_Z_in_Earth: float | np.ndarray,
+        M_p: float | np.ndarray,
+        steepness: float | np.ndarray = 100,
+        Z_core: float | np.ndarray = 1.0,
+        Z_env: float | np.ndarray = 0.014,
+    ) -> float | np.ndarray:
+        """
+        Analytic inverse of the reverse_sigmoid_integral.
+        Given the integral result (heavy element mass), it computes the corresponding m_b.
+        The returned m_b is capped between 0 and 1.
+        """
+        import mesa_helper as mh
+        
+        M_Z_in_Earth = np.asarray(M_Z_in_Earth, dtype=float)
+        M_p = np.asarray(M_p, dtype=float)
+        steepness = np.asarray(steepness, dtype=float)
+        Z_core = np.asarray(Z_core, dtype=float)
+        Z_env = np.asarray(Z_env, dtype=float)
+
+        Mz_Mp = (M_Z_in_Earth / mh.M_Jup_in_Earth) / M_p
+        
+        delta = Z_core - Z_env
+        safe_delta = np.where(delta == 0, 1.0, delta)
+        
+        a = - (steepness / 2.0) * (Z_core - Mz_Mp) / safe_delta
+        b = - (steepness / 2.0) * (Z_env - Mz_Mp) / safe_delta
+        
+        with np.errstate(divide='ignore', invalid='ignore'):
+            arg = - np.sinh(b) / np.sinh(a)
+            m_b = M_p * (0.5 + (1.0 / steepness) * np.log(arg))
+            
+        m_b = np.clip(m_b, 0.0, 1.0)
+        m_b = np.where(delta == 0, 0.5, m_b)
+        
+        return m_b
+
+
+    @staticmethod
     def integrate_profile(
         profile_func: Callable,
         m_start: float,

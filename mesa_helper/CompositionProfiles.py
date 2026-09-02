@@ -186,6 +186,23 @@ class CompositionProfiles:
         )
 
     @staticmethod
+    def inverse_reverse_sigmoid_integral(
+        M_Z_in_Earth: float | np.ndarray,
+        M_p: float | np.ndarray,
+        steepness: float | np.ndarray = 100,
+        Z_core: float | np.ndarray = 1.0,
+        Z_env: float | np.ndarray = Z_Sol,
+    ) -> float | np.ndarray:
+        """Returns the m_b that yields the specified heavy element mass."""
+        return MathProfile.inverse_reverse_sigmoid_integral(
+            M_Z_in_Earth=M_Z_in_Earth,
+            M_p=M_p,
+            steepness=steepness,
+            Z_core=Z_core,
+            Z_env=Z_env,
+        )
+
+    @staticmethod
     def join_compositional_gradients(
         profile_functions: list[Callable],
         transition_functions: list[Callable],
